@@ -1,15 +1,32 @@
 import { get, set, del } from 'idb-keyval'
 import type { Notebook } from './types'
+import { downloadPdf, uploadPdf } from './cloud'
 
 const KEY = 'technote:notebooks'
 
 export const loadNotebooks = async (): Promise<Notebook[]> =>
   (await get<Notebook[]>(KEY)) ?? []
 
-export const saveNotebooks = (nbs: Notebook[]) => set(KEY, nbs)
 
-export const savePdf = (id: string, data: ArrayBuffer) => set(`technote:pdf:${id}`, data)
-export const loadPdf = (id: string) => get<ArrayBuffer>(`technote:pdf:${id}`)
+// Eski (hesapsız) sürümden kalan yerel defterler
+export const loadLegacyNotebooks = loadNotebooks
+export const clearLegacyNotebooks = () => del(KEY)
+
+const pdfKey = (id: string) => `technote:pdf:${id}`
+
+// PDF: önce buluta yükle, sonra cihaz önbelleğine yaz
+export const savePdf = async (id: string, data: ArrayBuffer) => {
+  await uploadPdf(id, data)
+  await set(pdfKey(id), data)
+}
+export const loadLocalPdf = (id: string) => get<ArrayBuffer>(pdfKey(id))
+export const loadPdf = async (id: string) => {
+  const local = await get<ArrayBuffer>(pdfKey(id))
+  if (local) return local
+  const remote = await downloadPdf(id)
+  if (remote) await set(pdfKey(id), remote)
+  return remote
+}
 export const deletePdf = (id: string) => del(`technote:pdf:${id}`)
 
 export const exportBackup = async (nbs: Notebook[]) => {

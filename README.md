@@ -18,3 +18,10 @@ npm run build
 ```
 
 iPad'de Safari'den açıp Paylaş → "Ana Ekrana Ekle" ile uygulama gibi kullanılır.
+
+## Hesap sistemi (Supabase)
+
+1. Supabase projesinde `supabase/schema.sql` dosyasını SQL Editor'da çalıştır.
+2. `.env.example` dosyasını `.env.local` olarak kopyalayıp URL ve anon key'i yaz (Vercel'de de aynı iki değişken).
+3. Uygulamada kendi hesabınla kayıt ol, sonra SQL Editor'da `schema.sql` sonundaki admin satırını e-postanla çalıştır.
+4. Yeni kayıtlar "onay bekliyor" başlar; "Kullanıcılar" ekranından onaylanır veya davet edilir.

@@ -22,9 +22,10 @@ interface Props {
   nb: Notebook
   onChange: (nb: Notebook) => void
   onBack: () => void
+  sync?: 'ok' | 'saving' | 'error'
 }
 
-export default function Editor({ nb, onChange, onBack }: Props) {
+export default function Editor({ nb, onChange, onBack, sync }: Props) {
   const [idx, setIdx] = useState(0)
   const [tool, setTool] = useState<Tool>('pen')
   const [color, setColor] = useState(COLORS[0])
@@ -141,6 +142,7 @@ export default function Editor({ nb, onChange, onBack }: Props) {
       <header className="bar">
         <button onClick={onBack}>‹ Defterler</button>
         <strong className="title">{nb.name}</strong>
+        <span className="syncs">{sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi' : ''}</span>
         <span className="spacer" />
         <button onClick={doUndo} title="Geri al">↶</button>
         <button onClick={doRedo} title="Yinele">↷</button>
