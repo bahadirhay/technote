@@ -35,7 +35,7 @@ const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke) => {
   ctx.lineJoin = 'round'
   ctx.strokeStyle = s.color
   if (s.tool === 'highlighter') {
-    ctx.globalAlpha = 0.35
+    ctx.globalAlpha = 0.45
     ctx.globalCompositeOperation = 'multiply'
     ctx.lineWidth = s.width * 4
     ctx.beginPath()

@@ -16,6 +16,7 @@ import {
 } from './types'
 
 const COLORS = ['#111827', '#1d4ed8', '#dc2626', '#16a34a', '#d97706', '#9333ea']
+const HL_COLORS = ['#facc15', '#4ade80', '#f472b6', '#38bdf8', '#fb923c', '#a78bfa']
 const FONTS = ['system-ui', 'Georgia', 'Courier New', 'Comic Sans MS', 'Marker Felt', 'Bradley Hand', 'Snell Roundhand']
 
 interface Props {
@@ -29,6 +30,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   const [idx, setIdx] = useState(0)
   const [tool, setTool] = useState<Tool>('pen')
   const [color, setColor] = useState(COLORS[0])
+  const [hlColor, setHlColor] = useState(HL_COLORS[0])
   const [width, setWidth] = useState(2.5)
   const [font, setFont] = useState(FONTS[0])
   const [fontSize, setFontSize] = useState(22)
@@ -192,13 +194,13 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
           </button>
         ))}
         <span className="sep" />
-        {COLORS.map((c) => (
+        {(tool === 'highlighter' ? HL_COLORS : COLORS).map((c) => (
           <button
             key={c}
-            className={`swatch ${color === c ? 'on' : ''}`}
+            className={`swatch ${(tool === 'highlighter' ? hlColor : color) === c ? 'on' : ''}`}
             style={{ background: c }}
             aria-label={c}
-            onClick={() => setColor(c)}
+            onClick={() => (tool === 'highlighter' ? setHlColor(c) : setColor(c))}
           />
         ))}
         <span className="sep" />
@@ -233,7 +235,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
             <PageCanvas
               page={page}
               tool={tool}
-              color={color}
+              color={tool === 'highlighter' ? hlColor : color}
               width={width}
               bgImage={bgImage}
               scrollRef={wrap}
