@@ -81,6 +81,20 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   }
   const patch = (p: Partial<Page>) => commit(nb.pages.map((x) => (x.id === page.id ? { ...x, ...p } : x)))
 
+  // Boş kalan yazı kutularını temizler (odak kaybında silmek yeni kutuyu anında öldürüyordu)
+  const sweepEmpty = () => {
+    if (!nb.pages.some((p) => p.texts.some((t) => !t.text.trim()))) return
+    onChange({ ...nb, pages: nb.pages.map((p) => ({ ...p, texts: p.texts.filter((t) => t.text.trim()) })) })
+  }
+  const pickTool = (t: Tool) => {
+    if (t !== 'text') sweepEmpty()
+    setTool(t)
+  }
+  const goPage = (i: number) => {
+    sweepEmpty()
+    setIdx(i)
+  }
+
   const doUndo = () => {
     const prev = undo.current.pop()
     if (!prev) return
@@ -135,12 +149,12 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
     let top = y - fontSize * 0.7
     if (lineH) {
       const first = page.bg === 'lined' ? 80 : 0
-      const lineY = first + Math.max(0, Math.round((y - first) / lineH)) * lineH
+      const lineY = first + Math.max(0, Math.ceil((y - first) / lineH)) * lineH
       top = lineY - (lineH / 2 + fontSize * 0.35)
     }
     const left = Math.min(Math.max(8, x - 4), PAGE_W - 120)
     const t: TextBox = { id: uid(), x: left, y: Math.max(0, top), w: PAGE_W - left - 16, text: '', font, size: fontSize, color }
-    patch({ texts: [...page.texts, t] })
+    patch({ texts: [...page.texts.filter((x) => x.text.trim()), t] })
   }
   const editText = (id: string, p: Partial<TextBox>) =>
     patch({ texts: page.texts.map((t) => (t.id === id ? { ...t, ...p } : t)) })
@@ -149,7 +163,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   return (
     <div className="editor">
       <header className="bar">
-        <button onClick={onBack}>‹ Defterler</button>
+        <button onClick={() => { sweepEmpty(); onBack() }}>‹ Defterler</button>
         <strong className="title">{nb.name}</strong>
         <span className={`syncdot ${sync ?? 'ok'}`} title={sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi' : 'Kaydedildi'} />
         <span className="spacer" />
@@ -173,7 +187,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
 
       <div className="tools">
         {(['pen', 'highlighter', 'eraser', 'text'] as Tool[]).map((t) => (
-          <button key={t} className={tool === t ? 'on' : ''} onClick={() => setTool(t)}>
+          <button key={t} className={tool === t ? 'on' : ''} onClick={() => pickTool(t)}>
             {{ pen: '✎ Kalem', highlighter: '🖍 Fosforlu', eraser: '⌫ Silgi', text: 'T Yazı' }[t]}
           </button>
         ))}
@@ -239,7 +253,6 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
                   rows={Math.max(1, t.text.split('\n').length)}
                   style={{ fontFamily: t.font, fontSize: t.size, color: t.color, lineHeight: lineH ? `${lineH}px` : 1.3 }}
                   onChange={(e) => editText(t.id, { text: e.target.value })}
-                  onBlur={(e) => !e.target.value && removeText(t.id)}
                 />
                 {tool === 'text' && (
                   <button className="x" onClick={() => removeText(t.id)} aria-label="Sil">×</button>
@@ -251,9 +264,9 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
       </div>
 
       <footer className="bar pager">
-        <button onClick={() => setIdx(Math.max(0, idx - 1))} disabled={idx === 0}>‹</button>
+        <button onClick={() => goPage(Math.max(0, idx - 1))} disabled={idx === 0}>‹</button>
         <span>{idx + 1} / {nb.pages.length}</span>
-        <button onClick={() => setIdx(Math.min(nb.pages.length - 1, idx + 1))} disabled={idx >= nb.pages.length - 1}>›</button>
+        <button onClick={() => goPage(Math.min(nb.pages.length - 1, idx + 1))} disabled={idx >= nb.pages.length - 1}>›</button>
         <span className="spacer" />
         <button onClick={() => addPage()}>+ Sayfa</button>
         <button onClick={delPage}>Sayfayı sil</button>
