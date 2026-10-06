@@ -26,7 +26,11 @@ input[type=number] { width: 64px; }
 .editor { height: 100%; display: flex; flex-direction: column; }
 .tools { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; overflow-x: auto; white-space: nowrap; }
 .swatch { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #94a3b8; }
-.swatch.on { box-shadow: 0 0 0 3px #1d4ed8; }
+.swatch { position: relative; flex: none; }
+.swatch.on { transform: scale(1.18); box-shadow: 0 0 0 2px #fff, 0 0 0 4px #111827; }
+.swatch.on::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px; font-weight: 700; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+.preview { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px; background: #fff; border: 1px solid #cbd5e1; }
+.preview i { display: block; border-radius: 50%; }
 .scroll { flex: 1; overflow: auto; padding: 12px; -webkit-overflow-scrolling: touch; }
 .paper { margin: 0 auto; background: #fff; box-shadow: 0 2px 12px #0003; overflow: hidden; }
 .page-canvas { display: block; }
@@ -58,3 +62,6 @@ button.link { border: 0; background: none; color: #1d4ed8; min-height: 32px; }
 .syncdot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: transparent; }
 .syncdot.saving { background: #f59e0b; }
 .syncdot.error { background: #dc2626; }
+
+.bar button { white-space: nowrap; }
+@media (max-width: 520px) { .bar { gap: 6px; padding-left: 8px; padding-right: 8px; } .bar button { padding: 8px 9px; } }

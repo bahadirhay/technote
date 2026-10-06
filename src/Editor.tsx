@@ -203,6 +203,16 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
             onClick={() => (tool === 'highlighter' ? setHlColor(c) : setColor(c))}
           />
         ))}
+        <span className="preview" title="Seçili renk ve kalınlık">
+          <i
+            style={{
+              background: tool === 'highlighter' ? hlColor : color,
+              opacity: tool === 'highlighter' ? 0.5 : 1,
+              width: tool === 'text' ? 14 : Math.min(30, Math.max(3, tool === 'highlighter' ? width * 2.5 : width * 1.6)),
+              height: tool === 'text' ? 14 : Math.min(30, Math.max(3, tool === 'highlighter' ? width * 2.5 : width * 1.6)),
+            }}
+          />
+        </span>
         <span className="sep" />
         {tool === 'text' ? (
           <>
