@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import Account, { NewPassword } from './Account'
 import Admin from './Admin'
 import Auth from './Auth'
 import Editor from './Editor'
@@ -11,11 +12,15 @@ const NB_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#9333ea', '#0891
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
+  const [recovery, setRecovery] = useState(false)
 
   useEffect(() => {
     if (!cloudConfigured) return
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    const { data } = supabase.auth.onAuthStateChange((e, s) => {
+      if (e === 'PASSWORD_RECOVERY') setRecovery(true)
+      setSession(s)
+    })
     return () => data.subscription.unsubscribe()
   }, [])
 
@@ -24,6 +29,7 @@ export default function App() {
   }
   if (session === undefined) return <p className="loading">Yükleniyor…</p>
   if (!session) return <Auth />
+  if (recovery) return <NewPassword onDone={() => setRecovery(false)} />
   return <Gate key={session.user.id} userId={session.user.id} email={session.user.email ?? ''} />
 }
 
@@ -74,7 +80,9 @@ function Gate({ userId, email }: { userId: string; email: string }) {
   return <Notes profile={profile} />
 }
 
-function Notes({ profile }: { profile: Profile }) {
+function Notes({ profile: initial }: { profile: Profile }) {
+  const [profile, setProfile] = useState(initial)
+  const [account, setAccount] = useState(false)
   const [nbs, setNbs] = useState<Notebook[] | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [admin, setAdmin] = useState(false)
@@ -153,6 +161,9 @@ function Notes({ profile }: { profile: Profile }) {
 
   if (loadErr) return <p className="loading err">{loadErr}</p>
   if (!nbs) return <p className="loading">Yükleniyor…</p>
+  if (account) {
+    return <Account profile={profile} onBack={() => setAccount(false)} onNameChanged={(n) => setProfile({ ...profile, display_name: n })} />
+  }
   if (admin) return <Admin me={profile.id} onBack={() => setAdmin(false)} />
 
   const open = nbs.find((n) => n.id === openId)
@@ -203,7 +214,8 @@ function Notes({ profile }: { profile: Profile }) {
         {profile.is_admin && <button onClick={() => setAdmin(true)}>Kullanıcılar</button>}
         <button onClick={() => exportBackup(nbs)}>Yedekle</button>
         <button onClick={() => restore.current?.click()}>Yedekten yükle</button>
-        <button onClick={logout} title={profile.email}>Çıkış</button>
+        <button onClick={() => setAccount(true)} title={profile.email}>{profile.display_name || 'Hesabım'}</button>
+        <button onClick={logout}>Çıkış</button>
         <input
           ref={restore}
           type="file"

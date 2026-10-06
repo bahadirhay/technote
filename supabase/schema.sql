@@ -9,6 +9,7 @@ insert into public.settings values (true, true);
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
+  display_name text not null default '',
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   is_admin boolean not null default false,
   created_at timestamptz not null default now()
@@ -56,13 +57,21 @@ begin
   else
     v_status := 'rejected';
   end if;
-  insert into public.profiles (id, email, status) values (new.id, v_email, v_status);
+  insert into public.profiles (id, email, display_name, status)
+  values (new.id, v_email, left(trim(coalesce(new.raw_user_meta_data->>'display_name', '')), 60), v_status);
   return new;
 end $$;
 
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Kullanıcı sadece kendi görünen adını değiştirebilir
+create function public.set_display_name(n text) returns void
+language sql security definer set search_path = '' as $$
+  update public.profiles set display_name = left(trim(n), 60) where id = auth.uid()
+$$;
+grant execute on function public.set_display_name(text) to authenticated;
 
 -- Satır düzeyi güvenlik
 alter table public.settings enable row level security;

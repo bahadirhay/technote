@@ -11,6 +11,7 @@ export type Status = 'pending' | 'approved' | 'rejected'
 export interface Profile {
   id: string
   email: string
+  display_name: string
   status: Status
   is_admin: boolean
   created_at: string
@@ -92,4 +93,17 @@ export const getSignupsOpen = async () =>
 
 export const setSignupsOpen = async (open: boolean) => {
   must(await supabase.from('settings').update({ signups_open: open }).eq('id', true).select('id'))
+}
+
+// --- hesabım ---
+export const updateDisplayName = async (name: string) => {
+  const n = name.trim().slice(0, 60)
+  const { error } = await supabase.rpc('set_display_name', { n })
+  if (error) throw new Error(error.message)
+  await supabase.auth.updateUser({ data: { display_name: n } })
+}
+
+export const updatePassword = async (password: string) => {
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) throw new Error(error.message)
 }

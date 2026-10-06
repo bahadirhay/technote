@@ -48,7 +48,7 @@ export default function Admin({ me, onBack }: { me: string; onBack: () => void }
   const group = (s: Status) => profiles.filter((p) => p.status === s)
   const row = (p: Profile, actions: React.ReactNode) => (
     <li key={p.id}>
-      <span className="grow">{p.email}{p.is_admin && ' (yönetici)'}</span>
+      <span className="grow">{p.display_name ? `${p.display_name} · ` : ''}{p.email}{p.is_admin && ' (yönetici)'}</span>
       {p.id !== me && actions}
     </li>
   )
