@@ -10,6 +10,7 @@ interface Props {
   onStrokes: (strokes: Stroke[]) => void
   onPlaceText: (x: number, y: number) => void
   scrollRef: React.RefObject<HTMLDivElement | null>
+  fingerDraw: boolean
 }
 
 const drawBg = (ctx: CanvasRenderingContext2D, bg: Page['bg']) => {
@@ -61,11 +62,11 @@ const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke) => {
   ctx.restore()
 }
 
-export default function PageCanvas({ page, tool, color, width, bgImage, onStrokes, onPlaceText, scrollRef }: Props) {
+export default function PageCanvas({ page, tool, color, width, bgImage, onStrokes, onPlaceText, scrollRef, fingerDraw }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
   const live = useRef<Stroke | null>(null)
   const erasing = useRef<Stroke[] | null>(null)
-  const touchY = useRef<number | null>(null)
+  const touches = useRef(new Map<number, number>())
 
   const redraw = useCallback(
     (strokes: Stroke[], extra?: Stroke | null) => {
@@ -112,8 +113,13 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
 
   const down = (e: React.PointerEvent) => {
     if (e.pointerType === 'touch') {
-      touchY.current = e.clientY
-      return
+      touches.current.set(e.pointerId, e.clientY)
+      // 2 parmak: cizimi iptal et, kaydirma moduna gec
+      if (touches.current.size >= 2) live.current = null
+      if (!fingerDraw || touches.current.size >= 2) {
+        redraw(page.strokes)
+        return
+      }
     }
     ;(e.target as Element).setPointerCapture(e.pointerId)
     const p = pos(e)
@@ -124,10 +130,11 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
   }
 
   const move = (e: React.PointerEvent) => {
-    if (e.pointerType === 'touch') {
-      if (touchY.current != null && scrollRef.current) {
-        scrollRef.current.scrollTop -= e.clientY - touchY.current
-        touchY.current = e.clientY
+    if (e.pointerType === 'touch' && (!fingerDraw || touches.current.size >= 2)) {
+      const last = touches.current.get(e.pointerId)
+      if (last != null && scrollRef.current) {
+        scrollRef.current.scrollTop -= (e.clientY - last) / touches.current.size
+        touches.current.set(e.pointerId, e.clientY)
       }
       return
     }
@@ -147,10 +154,7 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
   }
 
   const up = (e: React.PointerEvent) => {
-    if (e.pointerType === 'touch') {
-      touchY.current = null
-      return
-    }
+    if (e.pointerType === 'touch') touches.current.delete(e.pointerId)
     if (live.current) {
       onStrokes([...page.strokes, live.current])
       live.current = null

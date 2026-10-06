@@ -34,6 +34,18 @@ export default function Editor({ nb, onChange, onBack }: Props) {
   const [bgImage, setBgImage] = useState<HTMLCanvasElement | null>(null)
   const [scale, setScale] = useState(1)
   const [busy, setBusy] = useState(false)
+  const [fingerDraw, setFingerDraw] = useState(() => {
+    try {
+      const v = localStorage.getItem('technote:fingerDraw')
+      return v ? v === '1' : window.innerWidth < 820
+    } catch {
+      return window.innerWidth < 820
+    }
+  })
+  const toggleFinger = () => {
+    setFingerDraw(!fingerDraw)
+    try { localStorage.setItem('technote:fingerDraw', fingerDraw ? '0' : '1') } catch { /* yok say */ }
+  }
   const undo = useRef<Page[][]>([])
   const redo = useRef<Page[][]>([])
   const wrap = useRef<HTMLDivElement>(null)
@@ -178,6 +190,9 @@ export default function Editor({ nb, onChange, onBack }: Props) {
           <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />
         )}
         <span className="spacer" />
+        <button className={fingerDraw ? 'on' : ''} onClick={toggleFinger} title="Parmakla çizim">
+          ☝ {fingerDraw ? 'Parmak: çiz' : 'Parmak: kaydır'}
+        </button>
         {!page.pdf && (
           <select value={page.bg} onChange={(e) => patch({ bg: e.target.value as Background })}>
             <option value="blank">Boş</option>
@@ -197,6 +212,7 @@ export default function Editor({ nb, onChange, onBack }: Props) {
               width={width}
               bgImage={bgImage}
               scrollRef={wrap}
+              fingerDraw={fingerDraw}
               onStrokes={(strokes: Stroke[]) => patch({ strokes })}
               onPlaceText={placeText}
             />
