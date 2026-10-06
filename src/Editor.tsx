@@ -17,6 +17,10 @@ import {
 
 const COLORS = ['#111827', '#1d4ed8', '#dc2626', '#16a34a', '#d97706', '#9333ea']
 const HL_COLORS = ['#facc15', '#4ade80', '#f472b6', '#38bdf8', '#fb923c', '#a78bfa']
+const COLOR_NAMES: Record<string, string> = {
+  '#111827': 'Siyah', '#1d4ed8': 'Mavi', '#dc2626': 'Kırmızı', '#16a34a': 'Yeşil', '#d97706': 'Turuncu', '#9333ea': 'Mor',
+  '#facc15': 'Sarı', '#4ade80': 'Açık yeşil', '#f472b6': 'Pembe', '#38bdf8': 'Açık mavi', '#fb923c': 'Turuncu', '#a78bfa': 'Açık mor',
+}
 const FONTS = ['system-ui', 'Georgia', 'Courier New', 'Comic Sans MS', 'Marker Felt', 'Bradley Hand', 'Snell Roundhand']
 
 interface Props {
@@ -199,7 +203,8 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
             key={c}
             className={`swatch ${(tool === 'highlighter' ? hlColor : color) === c ? 'on' : ''}`}
             style={{ background: c }}
-            aria-label={c}
+            aria-label={COLOR_NAMES[c]}
+            title={COLOR_NAMES[c]}
             onClick={() => (tool === 'highlighter' ? setHlColor(c) : setColor(c))}
           />
         ))}
@@ -213,6 +218,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
             }}
           />
         </span>
+        <span className="cname">{COLOR_NAMES[tool === 'highlighter' ? hlColor : color]}</span>
         <span className="sep" />
         {tool === 'text' ? (
           <>
