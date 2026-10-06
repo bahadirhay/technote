@@ -67,6 +67,7 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
   const live = useRef<Stroke | null>(null)
   const erasing = useRef<Stroke[] | null>(null)
   const touches = useRef(new Map<number, number>())
+  const tap = useRef<{ x: number; y: number; ok: boolean } | null>(null)
 
   const redraw = useCallback(
     (strokes: Stroke[], extra?: Stroke | null) => {
@@ -89,8 +90,10 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
   useEffect(() => {
     const c = ref.current!
     const dpr = window.devicePixelRatio || 1
-    c.width = PAGE_W * dpr
-    c.height = PAGE_H * dpr
+    if (c.width !== PAGE_W * dpr) {
+      c.width = PAGE_W * dpr
+      c.height = PAGE_H * dpr
+    }
     redraw(page.strokes)
   }, [page.strokes, redraw])
 
@@ -112,6 +115,13 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
   }
 
   const down = (e: React.PointerEvent) => {
+    // Yazı aracı: dokunuş bırakılınca (up) kutu açılır; kaydırma ile karışmasın
+    if (tool === 'text') {
+      tap.current = { x: e.clientX, y: e.clientY, ok: true }
+      if (e.pointerType === 'touch') touches.current.set(e.pointerId, e.clientY)
+      if (touches.current.size >= 2) tap.current.ok = false
+      return
+    }
     if (e.pointerType === 'touch') {
       touches.current.set(e.pointerId, e.clientY)
       // 2 parmak: cizimi iptal et, kaydirma moduna gec
@@ -123,13 +133,22 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
     }
     ;(e.target as Element).setPointerCapture(e.pointerId)
     const p = pos(e)
-    if (tool === 'text') return onPlaceText(p[0], p[1])
     if (tool === 'eraser') return eraseAt(p[0], p[1])
     live.current = { tool, color, width, points: [p] }
     redraw(page.strokes, live.current)
   }
 
   const move = (e: React.PointerEvent) => {
+    if (tool === 'text') {
+      const t = tap.current
+      if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) > 10) t.ok = false
+      const last = touches.current.get(e.pointerId)
+      if (e.pointerType === 'touch' && last != null && scrollRef.current) {
+        scrollRef.current.scrollTop -= e.clientY - last
+        touches.current.set(e.pointerId, e.clientY)
+      }
+      return
+    }
     if (e.pointerType === 'touch' && (!fingerDraw || touches.current.size >= 2)) {
       const last = touches.current.get(e.pointerId)
       if (last != null && scrollRef.current) {
@@ -154,6 +173,16 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
   }
 
   const up = (e: React.PointerEvent) => {
+    if (tool === 'text') {
+      touches.current.delete(e.pointerId)
+      const t = tap.current
+      tap.current = null
+      if (t?.ok && touches.current.size === 0) {
+        const p = pos(e)
+        onPlaceText(p[0], p[1])
+      }
+      return
+    }
     if (e.pointerType === 'touch') touches.current.delete(e.pointerId)
     if (live.current) {
       onStrokes([...page.strokes, live.current])

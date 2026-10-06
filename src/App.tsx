@@ -209,7 +209,7 @@ function Notes({ profile: initial }: { profile: Profile }) {
     <div className="home">
       <header className="bar">
         <h1>TechNote</h1>
-        <span className="syncs">{sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi, tekrar denenecek' : ''}</span>
+        <span className={`syncdot ${sync}`} title={sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi, tekrar denenecek' : 'Kaydedildi'} />
         <span className="spacer" />
         {profile.is_admin && <button onClick={() => setAdmin(true)}>Kullanıcılar</button>}
         <button onClick={() => exportBackup(nbs)}>Yedekle</button>

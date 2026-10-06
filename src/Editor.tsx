@@ -129,8 +129,17 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
     }
   }
 
+  // Çizgili/kareli sayfada yazı en yakın çizgiye oturur
+  const lineH = !page.pdf && page.bg === 'lined' ? 34 : !page.pdf && page.bg === 'grid' ? 30 : 0
   const placeText = (x: number, y: number) => {
-    const t: TextBox = { id: uid(), x, y, w: 300, text: '', font, size: fontSize, color }
+    let top = y - fontSize * 0.7
+    if (lineH) {
+      const first = page.bg === 'lined' ? 80 : 0
+      const lineY = first + Math.max(0, Math.round((y - first) / lineH)) * lineH
+      top = lineY - (lineH / 2 + fontSize * 0.35)
+    }
+    const left = Math.min(Math.max(8, x - 4), PAGE_W - 120)
+    const t: TextBox = { id: uid(), x: left, y: Math.max(0, top), w: PAGE_W - left - 16, text: '', font, size: fontSize, color }
     patch({ texts: [...page.texts, t] })
   }
   const editText = (id: string, p: Partial<TextBox>) =>
@@ -142,7 +151,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
       <header className="bar">
         <button onClick={onBack}>‹ Defterler</button>
         <strong className="title">{nb.name}</strong>
-        <span className="syncs">{sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi' : ''}</span>
+        <span className={`syncdot ${sync ?? 'ok'}`} title={sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi' : 'Kaydedildi'} />
         <span className="spacer" />
         <button onClick={doUndo} title="Geri al">↶</button>
         <button onClick={doRedo} title="Yinele">↷</button>
@@ -228,7 +237,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
                   autoFocus={!t.text}
                   value={t.text}
                   rows={Math.max(1, t.text.split('\n').length)}
-                  style={{ fontFamily: t.font, fontSize: t.size, color: t.color }}
+                  style={{ fontFamily: t.font, fontSize: t.size, color: t.color, lineHeight: lineH ? `${lineH}px` : 1.3 }}
                   onChange={(e) => editText(t.id, { text: e.target.value })}
                   onBlur={(e) => !e.target.value && removeText(t.id)}
                 />
