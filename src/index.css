@@ -35,7 +35,7 @@ input[type=number] { width: 64px; }
 .paper { margin: 0 auto; background: #fff; box-shadow: 0 2px 12px #0003; overflow: hidden; }
 .page-canvas { display: block; }
 .tbox { position: absolute; }
-.tbox textarea { width: 100%; border: 1px dashed #94a3b855; background: transparent; resize: none; outline: none; padding: 0 2px; overflow: hidden; display: block; }
+.tbox textarea { width: 100%; border: 1px dashed #94a3b855; background: transparent; resize: none; outline: none; padding: 0.15em 2px 0.45em; margin: -0.15em 0 0; overflow: hidden; display: block; box-sizing: content-box; }
 .tbox .x { position: absolute; right: -10px; top: -14px; min-height: 24px; width: 24px; padding: 0; border-radius: 50%; }
 .pager { border-top: 1px solid #cbd5e1; border-bottom: 0; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
 
