@@ -118,6 +118,10 @@ export interface Recording {
   durationMs: number
   mime: string
   size: number
+  // 'device': ses sadece kaydedildiği cihazda (sunucuya yüklenmez). Yoksa eski sürümden kalan sunucu kopyası.
+  where?: 'device'
+  // Kullanıcı sesi kendi bulutuna/Dosyalar'a kaydettiyse zamanı
+  savedAt?: number
 }
 
 export interface Notebook {

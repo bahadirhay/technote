@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { fmtClock, fmtDate } from './media'
-import { loadAudio } from './store'
+import { hasLocalAudio, loadAudio } from './store'
 import type { Recording } from './types'
 
 export interface Jump {
@@ -15,10 +15,12 @@ interface Props {
   onClose: () => void
   onDelete: (id: string) => void
   onRename: (id: string) => void
+  onExport: (id: string) => void
+  onAttach: (id: string, file: File) => void
 }
 
 // Kayıtlar: dinle / duraklat / durdur, ileri-geri sar, hız; küçültünce yazarken dinlemeye devam eder
-export default function Recordings({ recordings, jump, onClose, onDelete, onRename }: Props) {
+export default function Recordings({ recordings, jump, onClose, onDelete, onRename, onExport, onAttach }: Props) {
   const audio = useRef<HTMLAudioElement>(null)
   const [cur, setCur] = useState<string | null>(null)
   const [url, setUrl] = useState('')
@@ -28,11 +30,24 @@ export default function Recordings({ recordings, jump, onClose, onDelete, onRena
   const [mini, setMini] = useState(false)
   const [err, setErr] = useState('')
   const pending = useRef<{ ms: number; play: boolean } | null>(null)
+  const attachInput = useRef<HTMLInputElement>(null)
+  const attachFor = useRef<string | null>(null)
+  // Bu cihazda sesi olmayan kayıtlar (başka cihazda kaydedilmiş)
+  const [missing, setMissing] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    let live = true
+    void Promise.all(
+      recordings.filter((r) => r.where === 'device').map(async (r) => ((await hasLocalAudio(r.id)) ? null : r.id)),
+    ).then((ids) => live && setMissing(new Set(ids.filter((x): x is string => !!x))))
+    return () => {
+      live = false
+    }
+  }, [recordings])
   const rec = recordings.find((r) => r.id === cur)
 
   const select = async (id: string, atMs = 0, play = true) => {
     setErr('')
-    const blob = await loadAudio(id)
+    const blob = await loadAudio(id, recordings.find((r) => r.id === id)?.where !== 'device')
     if (!blob) return setErr('Ses dosyası bulunamadı.')
     setUrl((old) => {
       if (old) URL.revokeObjectURL(old)
@@ -136,6 +151,24 @@ export default function Recordings({ recordings, jump, onClose, onDelete, onRena
       )}
       {err && <p className="err rp-err">{err}</p>}
 
+      <input
+        ref={attachInput}
+        type="file"
+        accept="audio/*,.m4a,.mp4,.webm,.wav,.mp3,.ogg"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (f && attachFor.current) onAttach(attachFor.current, f)
+        }}
+      />
+      {!mini && (
+        <p className="rp-info">
+          Ses kayıtları <b>sadece cihazında</b> saklanır, sunucuya yüklenmez. <b>☁ Kaydet</b> ile iCloud Drive, Google Drive
+          gibi <b>kendi bulutuna</b> kaydedebilirsin. Safari verisini silersen veya uygulamayı kaldırırsan cihazdaki ses
+          kaybolur.
+        </p>
+      )}
       {!mini && (
         <ul className="rp-list">
           {recordings.length === 0 && <li className="muted pad">Henüz kayıt yok. 🎙 Kayıt düğmesiyle başla.</li>}
@@ -144,8 +177,31 @@ export default function Recordings({ recordings, jump, onClose, onDelete, onRena
               <div className="rp-meta">
                 <strong>{r.name}</strong>
                 <span className="muted">{fmtDate(r.startedAt)} · {fmtClock(r.durationMs)} · {(r.size / 1048576).toFixed(1)} MB</span>
+                <span className="rp-badge">
+                  {r.where === 'device'
+                    ? missing.has(r.id)
+                      ? '⚠ Ses bu cihazda yok (başka cihazda kaydedildi)'
+                      : r.savedAt
+                        ? '📱 Bu cihazda · ✓ Kendi bulutuna kaydettin'
+                        : '📱 Sadece bu cihazda'
+                    : '☁ Eski sürümden: sunucuda'}
+                </span>
               </div>
-              <button onClick={() => void select(r.id, 0, true)}>▶ Dinle</button>
+              {missing.has(r.id) ? (
+                <button
+                  onClick={() => {
+                    attachFor.current = r.id
+                    attachInput.current?.click()
+                  }}
+                >
+                  📂 Dosyadan ekle
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => void select(r.id, 0, true)}>▶ Dinle</button>
+                  <button onClick={() => onExport(r.id)} title="Dosyalar'a / kendi bulutuna kaydet">☁ Kaydet</button>
+                </>
+              )}
               <button onClick={() => onRename(r.id)} aria-label="Adı değiştir">✎</button>
               <button onClick={() => onDelete(r.id)} aria-label="Sil">🗑</button>
             </li>

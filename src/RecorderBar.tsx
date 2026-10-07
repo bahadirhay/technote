@@ -45,7 +45,7 @@ export default function RecorderBar({ state, ms, error, onStart, onPause, onResu
       {error ? (
         <p className="recnote err">{error}</p>
       ) : state === 'idle' ? (
-        <p className="recnote">Kayıt sırasında ekranı kapatma veya başka uygulamaya geçme: kayıt durabilir.</p>
+        <p className="recnote">Kayıt sadece bu cihazda saklanır (sunucuya yüklenmez). Kayıt sırasında ekranı kapatma veya başka uygulamaya geçme: kayıt durabilir.</p>
       ) : null}
     </div>
   )

@@ -68,6 +68,9 @@ Kalemle şekil çiz, parmağını kaldırmadan yarım saniye bekle: daire, dikd�
 - **🎙 Kayıt:** ⏺ Başlat, ⏸ Duraklat, ▶ Devam, ⏹ Durdur. Süre duraklatmaları saymaz. Kayıt sırasında çizilen her çizgiye
   kaydın zamanı eklenir; çizgiyi seçip "▶ Buradan dinle" ile o ana atlanır.
 - **🎧 Kayıtlar:** Oynat / duraklat / durdur, 10 sn ileri-geri, hız, yeniden adlandır, sil. Küçültünce yazarken dinlenir.
-- Sesler kullanıcıya özel yolda saklanır (`<kullanıcı>/aud-<id>`), mevcut depolama kuralı geçerlidir. En uzun kayıt 2 saat.
+- **Ses sunucuya yüklenmez.** Kayıt sadece cihazda (IndexedDB) saklanır. Kullanıcı "☁ Kaydet" ile paylaşım sayfasından
+  kendi bulutuna (iCloud Drive, Google Drive, Dropbox...) .m4a olarak kaydeder. Başka cihazda ses yoksa "📂 Dosyadan ekle"
+  ile o dosya geri eklenir. İlk kayıtta bilgilendirme/onay gösterilir. En uzun kayıt 2 saat (~20 MB/saat).
+  Not: Önceki sürümde kaydedilmiş ve sunucuya yüklenmiş kayıtlar "☁ Eski sürümden" rozetiyle görünür; silince sunucudan da silinir.
 - Bilinen sınır: web uygulamasında ekran kilitlenirse veya başka uygulamaya geçilirse kayıt durabilir
-  (ekran kapanmasın diye Wake Lock istenir). Yedek dosyasına ses dahil değildir.
+  (ekran kapanmasın diye Wake Lock istenir). Yedek dosyasına ses dahil değildir (ses için ☁ Kaydet kullanılır).

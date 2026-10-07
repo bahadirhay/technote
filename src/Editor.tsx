@@ -5,11 +5,11 @@ import { deleteSelection } from './geometry'
 import { hashStrokes, strokesToPng } from './ink'
 import { indexEnabled } from './search'
 import { renderPdfPage, openPdf } from './pdf'
-import { deleteAudio, loadImage, saveAudio, saveImage, savePdf } from './store'
+import { deleteAudio, loadAudio, loadImage, saveAudio, saveImage, savePdf } from './store'
 import CameraSheet from './CameraSheet'
 import RecorderBar, { type RecUi } from './RecorderBar'
 import Recordings, { type Jump } from './Recordings'
-import { AudioRecorder, fmtClock, fmtDate } from './media'
+import { AudioRecorder, exportAudio, fmtClock, fmtDate } from './media'
 import {
   BG_LINES,
   BG_NAMES,
@@ -344,6 +344,22 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
 
   const startRecording = async () => {
     setRecErr('')
+    // İlk kayıtta bilgilendirme ve onay (ses sadece cihazda kalır)
+    try {
+      if (!localStorage.getItem('technote:recConsent')) {
+        const ok = confirm(
+          'Ses kaydı hakkında:\n\n' +
+            '• Kayıt SADECE bu cihazda saklanır, sunucuya yüklenmez.\n' +
+            '• İstersen kaydı iCloud Drive / Google Drive gibi kendi bulutuna kaydedebilirsin.\n' +
+            '• Safari verisini silersen veya uygulamayı kaldırırsan kayıt kaybolur.\n' +
+            '• Başkalarının sesini kaydederken (öğretmen, arkadaşların) izin almayı unutma.\n\nKayda başlayalım mı?',
+        )
+        if (!ok) return
+        localStorage.setItem('technote:recConsent', '1')
+      }
+    } catch {
+      /* depolama yoksa her seferinde sormayız */
+    }
     if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       return setRecErr('Bu tarayıcı ses kaydını desteklemiyor.')
     }
@@ -386,16 +402,20 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
       durationMs: Math.round(durationMs),
       mime,
       size: blob.size,
+      where: 'device',
     }
     try {
       await saveAudio(meta.id, blob)
     } catch {
-      alert('Kayıt buluta yüklenemedi; şimdilik bu cihazda duruyor.')
+      // Cihaz deposu doluysa kaydı kaybetmemek için hemen dosya olarak kaydettir
+      alert('Kayıt cihaz deposuna yazılamadı. Şimdi Dosyalar\'a kaydediyoruz, kaybolmasın.')
+      await exportAudio(blob, meta.name)
     }
     const base = nbRef.current
     onChangeRef.current({ ...base, recordings: [...(base.recordings ?? []), meta] })
     setRec('idle')
     setRecOpen(false)
+    setPanelOpen(true)
   }
   // Süre sayacı + en uzun kayıt sınırı
   useEffect(() => {
@@ -442,6 +462,27 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
     const base = nbRef.current
     onChange({ ...base, recordings: (base.recordings ?? []).filter((x) => x.id !== id) })
     void deleteAudio(id)
+  }
+  const exportRec = async (id: string) => {
+    const r = nbRef.current.recordings?.find((x) => x.id === id)
+    if (!r) return
+    const blob = await loadAudio(id, r.where !== 'device')
+    if (!blob) return alert('Ses dosyası bu cihazda bulunamadı.')
+    if (await exportAudio(blob, r.name)) {
+      const base = nbRef.current
+      onChange({ ...base, recordings: (base.recordings ?? []).map((x) => (x.id === id ? { ...x, savedAt: Date.now() } : x)) })
+    }
+  }
+  // Başka cihazda kaydedilmiş bir kaydın sesini, kaydettiğin dosyadan bu cihaza geri ekler
+  const attachRec = async (id: string, file: File) => {
+    try {
+      await saveAudio(id, file)
+      const base = nbRef.current
+      onChange({ ...base, recordings: (base.recordings ?? []).map((x) => (x.id === id ? { ...x, where: 'device' } : x)) })
+      setJump((j) => ({ id, ms: 0, n: (j?.n ?? 0) + 1 }))
+    } catch {
+      alert('Dosya eklenemedi.')
+    }
   }
   const listenable = selection.strokes
     .map((i) => page.strokes[i])
@@ -791,6 +832,8 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
           onClose={() => setPanelOpen(false)}
           onDelete={deleteRec}
           onRename={renameRec}
+          onExport={(id) => void exportRec(id)}
+          onAttach={(id, f) => void attachRec(id, f)}
         />
       )}
       {camOpen && <CameraSheet onCapture={(b) => void addImage(b)} onClose={() => setCamOpen(false)} />}

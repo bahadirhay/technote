@@ -122,3 +122,27 @@ export const fmtClock = (ms: number): string => {
 
 export const fmtDate = (t: number): string =>
   new Date(t).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+
+export const audioExt = (mime: string): string =>
+  /mp4|m4a|aac/.test(mime) ? 'm4a' : /webm/.test(mime) ? 'webm' : /ogg/.test(mime) ? 'ogg' : /wav/.test(mime) ? 'wav' : 'm4a'
+
+// Kullanıcının kendi bulutuna/Dosyalar'a kaydetmesi için paylaşım sayfasını açar (iCloud Drive, Google Drive, Dropbox...).
+// Paylaşım desteklenmiyorsa dosya olarak indirir. Kullanıcı vazgeçerse false döner.
+export const exportAudio = async (blob: Blob, name: string): Promise<boolean> => {
+  const safe = name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'ses-kaydi'
+  const file = new File([blob], `${safe}.${audioExt(blob.type)}`, { type: blob.type })
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name })
+      return true
+    } catch (e) {
+      if ((e as DOMException)?.name === 'AbortError') return false
+    }
+  }
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(file)
+  a.download = file.name
+  a.click()
+  window.setTimeout(() => URL.revokeObjectURL(a.href), 10000)
+  return true
+}
