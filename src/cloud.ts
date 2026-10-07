@@ -67,6 +67,22 @@ export const downloadPdf = async (docId: string): Promise<ArrayBuffer | undefine
   return data.arrayBuffer()
 }
 
+export const uploadImage = async (id: string, blob: Blob) => {
+  const { data } = await supabase.auth.getUser()
+  if (!data.user) throw new Error('Oturum yok')
+  const { error } = await supabase.storage
+    .from('pdfs')
+    .upload(`${data.user.id}/img-${id}`, blob, { contentType: blob.type, upsert: true })
+  if (error) throw new Error(error.message)
+}
+
+export const downloadImage = async (id: string): Promise<Blob | undefined> => {
+  const { data: u } = await supabase.auth.getUser()
+  if (!u.user) return undefined
+  const { data, error } = await supabase.storage.from('pdfs').download(`${u.user.id}/img-${id}`)
+  return error || !data ? undefined : data
+}
+
 // --- yönetici ---
 export const listProfiles = async () =>
   must(await supabase.from('profiles').select('*').order('created_at', { ascending: false })) as Profile[]

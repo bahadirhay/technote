@@ -1,13 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PageCanvas from './PageCanvas'
 import { renderPdfPage, openPdf } from './pdf'
-import { savePdf } from './store'
+import { loadImage, saveImage, savePdf } from './store'
 import {
+  BG_LINES,
+  BG_NAMES,
   PAGE_H,
   PAGE_W,
   newPage,
   uid,
   type Background,
+  type ImageBox,
   type Notebook,
   type Page,
   type Stroke,
@@ -41,6 +44,17 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   const [bgImage, setBgImage] = useState<HTMLCanvasElement | null>(null)
   const [scale, setScale] = useState(1)
   const [busy, setBusy] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [imgs, setImgs] = useState<Map<string, HTMLImageElement>>(new Map())
+  const [smooth, setSmooth] = useState(() => {
+    try {
+      return localStorage.getItem('technote:smooth') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const loadingImgs = useRef(new Set<string>())
+  const imgInput = useRef<HTMLInputElement>(null)
   const [fingerDraw, setFingerDraw] = useState(() => {
     try {
       const v = localStorage.getItem('technote:fingerDraw')
@@ -79,6 +93,22 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
     }
   }, [page.id, page.pdf])
 
+  useEffect(() => {
+    for (const im of page.images ?? []) {
+      if (imgs.has(im.docId) || loadingImgs.current.has(im.docId)) continue
+      loadingImgs.current.add(im.docId)
+      loadImage(im.docId)
+        .then(async (blob) => {
+          if (!blob) return
+          const el = new Image()
+          el.src = URL.createObjectURL(blob)
+          await el.decode().catch(() => undefined)
+          setImgs((m) => new Map(m).set(im.docId, el))
+        })
+        .finally(() => loadingImgs.current.delete(im.docId))
+    }
+  }, [page.images, imgs])
+
   const commit = (pages: Page[]) => {
     undo.current.push(nb.pages)
     if (undo.current.length > 50) undo.current.shift()
@@ -94,10 +124,12 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   }
   const pickTool = (t: Tool) => {
     if (t !== 'text') sweepEmpty()
+    if (t !== 'select') setSelectedId(null)
     setTool(t)
   }
   const goPage = (i: number) => {
     sweepEmpty()
+    setSelectedId(null)
     setIdx(i)
   }
 
@@ -149,12 +181,62 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
     }
   }
 
+  const addImage = async (file: File) => {
+    setBusy(true)
+    try {
+      const url = URL.createObjectURL(file)
+      const src = new Image()
+      src.src = url
+      await src.decode()
+      const k = Math.min(1, 1600 / Math.max(src.naturalWidth, src.naturalHeight))
+      const c = document.createElement('canvas')
+      c.width = Math.max(1, Math.round(src.naturalWidth * k))
+      c.height = Math.max(1, Math.round(src.naturalHeight * k))
+      c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height)
+      URL.revokeObjectURL(url)
+      const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
+      const blob = await new Promise<Blob | null>((r) => c.toBlob(r, type, 0.88))
+      if (!blob) throw new Error('Resim işlenemedi')
+      const docId = uid()
+      await saveImage(docId, blob)
+      const el = new Image()
+      el.src = URL.createObjectURL(blob)
+      await el.decode().catch(() => undefined)
+      setImgs((m) => new Map(m).set(docId, el))
+      const w = Math.min(PAGE_W * 0.6, c.width)
+      const h = (w * c.height) / c.width
+      const top = ((wrap.current?.scrollTop ?? 0) / scale) + 40
+      const box: ImageBox = {
+        id: uid(), docId, w, h,
+        x: (PAGE_W - w) / 2,
+        y: Math.max(20, Math.min(top, PAGE_H - h - 20)),
+      }
+      patch({ images: [...(page.images ?? []), box] })
+      setTool('select')
+      setSelectedId(box.id)
+    } catch {
+      alert('Resim eklenemedi.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const deleteImage = () => {
+    if (!selectedId) return
+    patch({ images: (page.images ?? []).filter((i) => i.id !== selectedId) })
+    setSelectedId(null)
+  }
+  const toggleSmooth = () => {
+    setSmooth(!smooth)
+    try { localStorage.setItem('technote:smooth', smooth ? '0' : '1') } catch { /* yok say */ }
+  }
+
   // Çizgili/kareli sayfada yazı en yakın çizgiye oturur
-  const lineH = !page.pdf && page.bg === 'lined' ? 34 : !page.pdf && page.bg === 'grid' ? 30 : 0
+  const lines = page.pdf ? undefined : BG_LINES[page.bg]
+  const lineH = lines?.step ?? 0
   const placeText = (x: number, y: number) => {
     let top = y - fontSize * 0.7
     if (lineH) {
-      const first = page.bg === 'lined' ? 80 : 0
+      const first = lines!.first
       const lineY = first + Math.max(0, Math.ceil((y - first) / lineH)) * lineH
       top = lineY - (lineH / 2 + fontSize * 0.35)
     }
@@ -192,9 +274,9 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
       </header>
 
       <div className="tools">
-        {(['pen', 'highlighter', 'eraser', 'text'] as Tool[]).map((t) => (
+        {(['pen', 'highlighter', 'eraser', 'text', 'select'] as Tool[]).map((t) => (
           <button key={t} className={tool === t ? 'on' : ''} onClick={() => pickTool(t)}>
-            {{ pen: '✎ Kalem', highlighter: '🖍 Fosforlu', eraser: '⌫ Silgi', text: 'T Yazı' }[t]}
+            {{ pen: '✎ Kalem', highlighter: '🖍 Fosforlu', eraser: '⌫ Silgi', text: 'T Yazı', select: '⬚ Resim seç' }[t]}
           </button>
         ))}
         <span className="sep" />
@@ -233,14 +315,28 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
           <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />
         )}
         <span className="spacer" />
+        {tool === 'select' && selectedId && <button onClick={deleteImage}>🗑 Resmi sil</button>}
+        <button onClick={() => imgInput.current?.click()} disabled={busy}>🖼 Resim</button>
+        <input
+          ref={imgInput}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (f) addImage(f)
+          }}
+        />
+        <button className={smooth ? 'on' : ''} onClick={toggleSmooth} title="Yazıyı yumuşat">〰 Yumuşat</button>
         <button className={fingerDraw ? 'on' : ''} onClick={toggleFinger} title="Parmakla çizim">
           ☝ {fingerDraw ? 'Parmak: çiz' : 'Parmak: kaydır'}
         </button>
         {!page.pdf && (
           <select value={page.bg} onChange={(e) => patch({ bg: e.target.value as Background })}>
-            <option value="blank">Boş</option>
-            <option value="lined">Çizgili</option>
-            <option value="grid">Kareli</option>
+            {(Object.keys(BG_NAMES) as Background[]).map((b) => (
+              <option key={b} value={b}>{BG_NAMES[b]}</option>
+            ))}
           </select>
         )}
       </div>
@@ -256,6 +352,11 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
               bgImage={bgImage}
               scrollRef={wrap}
               fingerDraw={fingerDraw}
+              imgs={imgs}
+              selectedId={selectedId}
+              smooth={smooth}
+              onImages={(images) => patch({ images })}
+              onSelect={setSelectedId}
               onStrokes={(strokes: Stroke[]) => patch({ strokes })}
               onPlaceText={placeText}
             />

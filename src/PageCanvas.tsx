@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { PAGE_H, PAGE_W, type Page, type Pt, type Stroke, type Tool } from './types'
+import { BG_LINES, PAGE_H, PAGE_W, type Background, type ImageBox, type Page, type Pt, type Stroke, type Tool } from './types'
 
 interface Props {
   page: Page
@@ -7,29 +7,69 @@ interface Props {
   color: string
   width: number
   bgImage?: HTMLCanvasElement | null
+  imgs: Map<string, HTMLImageElement>
+  selectedId: string | null
+  smooth: boolean
   onStrokes: (strokes: Stroke[]) => void
+  onImages: (images: ImageBox[]) => void
+  onSelect: (id: string | null) => void
   onPlaceText: (x: number, y: number) => void
   scrollRef: React.RefObject<HTMLDivElement | null>
   fingerDraw: boolean
 }
 
-const drawBg = (ctx: CanvasRenderingContext2D, bg: Page['bg']) => {
+const HANDLE = 22
+
+const drawBg = (ctx: CanvasRenderingContext2D, bg: Background) => {
   ctx.fillStyle = '#fff'
   ctx.fillRect(0, 0, PAGE_W, PAGE_H)
+  const L = BG_LINES[bg]
   ctx.strokeStyle = '#cfd8e3'
   ctx.lineWidth = 1
   ctx.beginPath()
-  if (bg === 'lined') for (let y = 80; y < PAGE_H; y += 34) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y) }
+  if (bg === 'lined') for (let y = L!.first; y < PAGE_H; y += L!.step) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y) }
   if (bg === 'grid') {
     for (let y = 0; y < PAGE_H; y += 30) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y) }
     for (let x = 0; x < PAGE_W; x += 30) { ctx.moveTo(x, 0); ctx.lineTo(x, PAGE_H) }
   }
+  if (bg === 'cornell') for (let y = L!.first; y < 930; y += L!.step) { ctx.moveTo(190, y); ctx.lineTo(PAGE_W, y) }
   ctx.stroke()
+  if (bg === 'dotted') {
+    ctx.fillStyle = '#94a3b8'
+    for (let y = 30; y < PAGE_H; y += 30) for (let x = 30; x < PAGE_W; x += 30) { ctx.beginPath(); ctx.arc(x, y, 1.4, 0, Math.PI * 2); ctx.fill() }
+  }
+  if (bg === 'cornell') {
+    ctx.strokeStyle = '#94a3b8'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(190, 60); ctx.lineTo(190, 940)
+    ctx.moveTo(0, 60); ctx.lineTo(PAGE_W, 60)
+    ctx.moveTo(0, 940); ctx.lineTo(PAGE_W, 940)
+    ctx.stroke()
+  }
 }
 
-const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke) => {
-  const pts = s.points
-  if (!pts.length) return
+// Titreşimi azaltır: komşu noktaların ağırlıklı ortalaması (uçlar sabit)
+const smoothPts = (pts: Pt[]): Pt[] => {
+  let cur = pts
+  for (let k = 0; k < 2 && cur.length > 2; k++) {
+    const out: Pt[] = [cur[0]]
+    for (let i = 1; i < cur.length - 1; i++) {
+      out.push([
+        (cur[i - 1][0] + 2 * cur[i][0] + cur[i + 1][0]) / 4,
+        (cur[i - 1][1] + 2 * cur[i][1] + cur[i + 1][1]) / 4,
+        cur[i][2],
+      ])
+    }
+    out.push(cur[cur.length - 1])
+    cur = out
+  }
+  return cur
+}
+
+const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke, smooth: boolean) => {
+  if (!s.points.length) return
+  const pts = smooth ? smoothPts(s.points) : s.points
   ctx.save()
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -62,15 +102,24 @@ const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke) => {
   ctx.restore()
 }
 
-export default function PageCanvas({ page, tool, color, width, bgImage, onStrokes, onPlaceText, scrollRef, fingerDraw }: Props) {
+type Drag = { id: string; mode: 'move' | 'resize'; dx: number; dy: number; ratio: number }
+
+export default function PageCanvas({
+  page, tool, color, width, bgImage, imgs, selectedId, smooth,
+  onStrokes, onImages, onSelect, onPlaceText, scrollRef, fingerDraw,
+}: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
   const live = useRef<Stroke | null>(null)
   const erasing = useRef<Stroke[] | null>(null)
   const touches = useRef(new Map<number, number>())
   const tap = useRef<{ x: number; y: number; ok: boolean } | null>(null)
+  const drag = useRef<Drag | null>(null)
+  const draft = useRef<ImageBox[] | null>(null)
+  // Dokunma ile doğrudan çizim/taşıma (parmak çizim modu ya da resim seçme)
+  const direct = fingerDraw || tool === 'select'
 
   const redraw = useCallback(
-    (strokes: Stroke[], extra?: Stroke | null) => {
+    (strokes: Stroke[], extra?: Stroke | null, images: ImageBox[] = page.images ?? []) => {
       const c = ref.current
       if (!c) return
       const ctx = c.getContext('2d')!
@@ -81,10 +130,35 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
         ctx.fillRect(0, 0, PAGE_W, PAGE_H)
         ctx.drawImage(bgImage, 0, 0, PAGE_W, PAGE_H)
       } else drawBg(ctx, page.bg)
-      for (const s of strokes) drawStroke(ctx, s)
-      if (extra) drawStroke(ctx, extra)
+      for (const im of images) {
+        const el = imgs.get(im.docId)
+        if (el) ctx.drawImage(el, im.x, im.y, im.w, im.h)
+        else {
+          ctx.fillStyle = '#e2e8f0'
+          ctx.fillRect(im.x, im.y, im.w, im.h)
+        }
+      }
+      for (const s of strokes) drawStroke(ctx, s, smooth)
+      if (extra) drawStroke(ctx, extra, smooth)
+      const sel = tool === 'select' && images.find((i) => i.id === selectedId)
+      if (sel) {
+        ctx.save()
+        ctx.strokeStyle = '#1d4ed8'
+        ctx.lineWidth = 2
+        ctx.setLineDash([8, 6])
+        ctx.strokeRect(sel.x, sel.y, sel.w, sel.h)
+        ctx.setLineDash([])
+        ctx.fillStyle = '#1d4ed8'
+        ctx.beginPath()
+        ctx.arc(sel.x + sel.w, sel.y + sel.h, HANDLE / 2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 3
+        ctx.stroke()
+        ctx.restore()
+      }
     },
-    [page.bg, bgImage],
+    [page.bg, page.images, bgImage, imgs, selectedId, tool, smooth],
   )
 
   useEffect(() => {
@@ -114,6 +188,38 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
     }
   }
 
+  const selectDown = (x: number, y: number) => {
+    const list = page.images ?? []
+    const sel = list.find((i) => i.id === selectedId)
+    if (sel && Math.hypot(sel.x + sel.w - x, sel.y + sel.h - y) < HANDLE * 1.6) {
+      drag.current = { id: sel.id, mode: 'resize', dx: 0, dy: 0, ratio: sel.w / sel.h }
+      draft.current = list
+      return
+    }
+    for (let i = list.length - 1; i >= 0; i--) {
+      const im = list[i]
+      if (x >= im.x && x <= im.x + im.w && y >= im.y && y <= im.y + im.h) {
+        onSelect(im.id)
+        drag.current = { id: im.id, mode: 'move', dx: x - im.x, dy: y - im.y, ratio: im.w / im.h }
+        draft.current = list
+        return
+      }
+    }
+    onSelect(null)
+  }
+
+  const selectMove = (x: number, y: number) => {
+    const d = drag.current
+    if (!d || !draft.current) return
+    draft.current = draft.current.map((im) => {
+      if (im.id !== d.id) return im
+      if (d.mode === 'move') return { ...im, x: x - d.dx, y: y - d.dy }
+      const w = Math.max(40, x - im.x)
+      return { ...im, w, h: w / d.ratio }
+    })
+    redraw(page.strokes, null, draft.current)
+  }
+
   const down = (e: React.PointerEvent) => {
     // Yazı aracı: dokunuş bırakılınca (up) kutu açılır; kaydırma ile karışmasın
     if (tool === 'text') {
@@ -124,15 +230,20 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
     }
     if (e.pointerType === 'touch') {
       touches.current.set(e.pointerId, e.clientY)
-      // 2 parmak: cizimi iptal et, kaydirma moduna gec
-      if (touches.current.size >= 2) live.current = null
-      if (!fingerDraw || touches.current.size >= 2) {
+      // 2 parmak: çizimi iptal et, kaydırma moduna geç
+      if (touches.current.size >= 2) {
+        live.current = null
+        drag.current = null
+        draft.current = null
+      }
+      if (!direct || touches.current.size >= 2) {
         redraw(page.strokes)
         return
       }
     }
     ;(e.target as Element).setPointerCapture(e.pointerId)
     const p = pos(e)
+    if (tool === 'select') return selectDown(p[0], p[1])
     if (tool === 'eraser') return eraseAt(p[0], p[1])
     live.current = { tool, color, width, points: [p] }
     redraw(page.strokes, live.current)
@@ -149,7 +260,7 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
       }
       return
     }
-    if (e.pointerType === 'touch' && (!fingerDraw || touches.current.size >= 2)) {
+    if (e.pointerType === 'touch' && (!direct || touches.current.size >= 2)) {
       const last = touches.current.get(e.pointerId)
       if (last != null && scrollRef.current) {
         scrollRef.current.scrollTop -= (e.clientY - last) / touches.current.size
@@ -162,7 +273,8 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
       const r = ref.current!.getBoundingClientRect()
       const x = ((ev.clientX - r.left) / r.width) * PAGE_W
       const y = ((ev.clientY - r.top) / r.height) * PAGE_H
-      if (erasing.current || tool === 'eraser') {
+      if (tool === 'select') selectMove(x, y)
+      else if (erasing.current || tool === 'eraser') {
         if (e.buttons) eraseAt(x, y)
       } else if (live.current) {
         const pr = ev.pointerType === 'pen' && ev.pressure > 0 ? ev.pressure : 0.5
@@ -184,6 +296,11 @@ export default function PageCanvas({ page, tool, color, width, bgImage, onStroke
       return
     }
     if (e.pointerType === 'touch') touches.current.delete(e.pointerId)
+    if (drag.current && draft.current) {
+      onImages(draft.current)
+      drag.current = null
+      draft.current = null
+    }
     if (live.current) {
       onStrokes([...page.strokes, live.current])
       live.current = null

@@ -1,6 +1,6 @@
 export type Pt = [number, number, number]
 
-export type Tool = 'pen' | 'highlighter' | 'eraser' | 'text'
+export type Tool = 'pen' | 'highlighter' | 'eraser' | 'text' | 'select'
 
 export interface Stroke {
   tool: 'pen' | 'highlighter'
@@ -20,13 +20,39 @@ export interface TextBox {
   color: string
 }
 
-export type Background = 'blank' | 'lined' | 'grid'
+export type Background = 'blank' | 'lined' | 'grid' | 'dotted' | 'cornell'
+
+export const BG_NAMES: Record<Background, string> = {
+  blank: 'Boş',
+  lined: 'Çizgili',
+  grid: 'Kareli',
+  dotted: 'Noktalı',
+  cornell: 'Cornell',
+}
+
+// Yazının oturacağı satır aralıkları (yazı aracı ve çizim aynı değeri kullanır)
+export const BG_LINES: Partial<Record<Background, { first: number; step: number }>> = {
+  lined: { first: 80, step: 34 },
+  grid: { first: 0, step: 30 },
+  dotted: { first: 0, step: 30 },
+  cornell: { first: 100, step: 34 },
+}
+
+export interface ImageBox {
+  id: string
+  docId: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
 
 export interface Page {
   id: string
   bg: Background
   strokes: Stroke[]
   texts: TextBox[]
+  images?: ImageBox[]
   pdf?: { docId: string; pageNum: number }
 }
 
