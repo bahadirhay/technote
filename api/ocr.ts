@@ -13,7 +13,7 @@ const env = (name: string): string | undefined => {
   const v = process.env[name]?.trim().replace(/^["']+|["']+$/g, '').trim()
   return v || undefined
 }
-const DAILY_LIMIT = Number(env('OCR_DAILY_LIMIT') || 30)
+const DAILY_LIMIT = Number(env('OCR_DAILY_LIMIT') || 300)
 
 const SYSTEM =
   'Sen bir el yazısı okuyucusun. Görüntüdeki el yazısını aynen yazıya çevir. ' +

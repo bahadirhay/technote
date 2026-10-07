@@ -635,7 +635,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   }
   useEffect(() => {
     if (!autoConv || !ocrReady) return
-    const t = setTimeout(() => autoRun.current(), 1500)
+    const t = setTimeout(() => autoRun.current(), 2500)
     return () => clearTimeout(t)
   }, [autoConv, ocrReady, page.strokes, ocrBusy, tool])
   const convertToText = () => convertStrokes(selection.strokes)
