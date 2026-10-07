@@ -63,6 +63,7 @@ export default function Auth() {
         <button type="button" className="link" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMsg('') }}>
           {mode === 'login' ? 'Hesabın yok mu? Kayıt ol' : 'Zaten hesabın var mı? Giriş yap'}
         </button>
+        <p className="muted" style={{ textAlign: 'center' }}>Sürüm: {__APP_VERSION__}</p>
       </form>
     </div>
   )

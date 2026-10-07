@@ -94,6 +94,7 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
 
         <section>
           <button onClick={() => supabase.auth.signOut()}>Çıkış yap</button>
+          <p className="muted">Sürüm: {__APP_VERSION__}</p>
         </section>
       </div>
     </div>
