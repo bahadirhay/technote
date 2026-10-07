@@ -616,7 +616,13 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const [autoConv, setAutoConv] = useState(() => {
     try { return localStorage.getItem('technote:autoConv') === '1' } catch { return false }
   })
-  const toggleAuto = () => {
+  const toggleAuto = async () => {
+    if (!autoConv && !ocrReadyRef.current) {
+      const ok = await ocrAvailable()
+      if (!ok) return alert('El yazısı servisi şu an kullanılamıyor (Hesabım → "Servisi test et" ile nedenine bak). Servis düzelince otomatik yazı çalışır.')
+      ocrReadyRef.current = true
+      setOcrReady(true)
+    }
     if (!autoConv) nb.pages.forEach((p) => p.strokes.forEach((st) => autoTried.current.add(st)))
     setAutoConv(!autoConv)
     try { localStorage.setItem('technote:autoConv', autoConv ? '0' : '1') } catch { /* yok say */ }
@@ -870,7 +876,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         <span>{idx + 1} / {nb.pages.length}</span>
         <button onClick={() => goPage(Math.min(nb.pages.length - 1, idx + 1))} disabled={idx >= nb.pages.length - 1}>›</button>
         <span className="spacer" />
-        {ocrReady && (
+        {(
           <button className={autoConv ? 'on' : ''} onClick={toggleAuto} title="Kalemi bırakınca yazıyı otomatik düzelt">
             Aa Otomatik {autoConv ? 'açık' : 'kapalı'}
           </button>
