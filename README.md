@@ -26,13 +26,18 @@ iPad'de Safari'den açıp Paylaş → "Ana Ekrana Ekle" ile uygulama gibi kullan
 3. Uygulamada kendi hesabınla kayıt ol, sonra SQL Editor'da `schema.sql` sonundaki admin satırını e-postanla çalıştır.
 4. Yeni kayıtlar "onay bekliyor" başlar; "Kullanıcılar" ekranından onaylanır veya davet edilir.
 
-## El yazısını yazıya çevirme (Claude)
+## El yazısını yazıya çevirme (ücretsiz: Google Gemini)
 
 `api/ocr.ts` Vercel sunucu fonksiyonudur. Sadece giriş yapmış ve onaylı kullanıcılar çağırabilir.
 
 Vercel → Settings → Environment Variables:
-- `ANTHROPIC_API_KEY` (zorunlu): console.anthropic.com → API Keys. Aylık harcama limitini orada belirle.
-- `OCR_MODEL` (isteğe bağlı): varsayılan `claude-opus-5-5`. Daha ucuz için `claude-sonnet-5-5`.
+- `GEMINI_API_KEY` (önerilen, ücretsiz, kart istemez): aistudio.google.com → "Get API key".
+- `GEMINI_MODEL` (isteğe bağlı): varsayılan `gemini-flash-latest`.
+- `OCR_DAILY_LIMIT` (isteğe bağlı): kullanıcı başı günlük çeviri sayısı, varsayılan 30. Sınır için `supabase/migration-003-ocr-limit.sql` çalıştırılmalı.
+- `ANTHROPIC_API_KEY` (isteğe bağlı, ÜCRETLİ): sadece `GEMINI_API_KEY` yoksa kullanılır.
+
+Gizlilik: Gemini ücretsiz katmanında gönderilen içerik Google tarafından ürün geliştirmede kullanılabilir.
+Apple Scribble Türkçeyi desteklemez, bu yüzden kullanılmıyor.
 
 Kullanım: "Seç / taşı" ile el yazısını çevrele → "Aa Yazıya çevir".
 
