@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PageCanvas from './PageCanvas'
+import { supabase } from './cloud'
 import { deleteSelection } from './geometry'
+import { strokesToPng } from './ink'
 import { renderPdfPage, openPdf } from './pdf'
 import { loadImage, saveImage, savePdf } from './store'
 import {
@@ -53,6 +55,8 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   const [bgImage, setBgImage] = useState<HTMLCanvasElement | null>(null)
   const [scale, setScale] = useState(1)
   const [busy, setBusy] = useState(false)
+  const [activeText, setActiveText] = useState<string | null>(null)
+  const [ocrBusy, setOcrBusy] = useState(false)
   const [selection, setSelection] = useState<Selection>(EMPTY_SEL)
   const [shapeKind, setShapeKind] = useState<ShapeKind>('rect')
   const [shapeFill, setShapeFill] = useState(false)
@@ -142,6 +146,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   const goPage = (i: number) => {
     sweepEmpty()
     setSelection(EMPTY_SEL)
+    setActiveText(null)
     setIdx(i)
   }
 
@@ -269,6 +274,61 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   }
   const editText = (id: string, p: Partial<TextBox>) =>
     patch({ texts: page.texts.map((t) => (t.id === id ? { ...t, ...p } : t)) })
+  // Seçili el yazısını Claude ile okutup yazı kutusuna çevirir
+  const convertToText = async () => {
+    const picked = selection.strokes.map((i) => page.strokes[i]).filter((s) => s && s.tool === 'pen')
+    const png = strokesToPng(picked)
+    if (!png) return alert('Önce çevirmek istediğin el yazısını "Seç / taşı" ile çevreleyerek seç.')
+    setOcrBusy(true)
+    try {
+      const { data } = await supabase.auth.getSession()
+      const res = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token ?? ''}` },
+        body: JSON.stringify({ image: png.b64 }),
+      })
+      const body = (await res.json().catch(() => ({}))) as { text?: string; error?: string }
+      if (!res.ok) {
+        const msg: Record<string, string> = {
+          not_configured: 'El yazısı çevirme henüz kurulmadı (sunucuda API anahtarı eksik).',
+          unauthorized: 'Oturumun süresi dolmuş, çıkış yapıp tekrar gir.',
+          forbidden: 'Bu özellik için hesabının onaylı olması gerekir.',
+          rate_limited: 'Çok sık denendi, biraz bekleyip tekrar dene.',
+          refused: 'Bu yazı çevrilemedi.',
+        }
+        return alert(msg[body.error ?? ''] ?? (res.status === 404 ? 'El yazısı çevirme bu sürümde henüz sunucuda yok.' : 'El yazısı çevrilemedi, tekrar dene.'))
+      }
+      const text = (body.text ?? '').trim()
+      if (!text || text === '[okunamadı]') return alert('Yazı okunamadı. Daha net veya daha büyük yazmayı dene.')
+      const rects = picked.flatMap((s) => s.points)
+      const x0 = Math.min(...rects.map((p) => p[0])), y0 = Math.min(...rects.map((p) => p[1]))
+      const x1 = Math.max(...rects.map((p) => p[0]))
+      const nLines = text.split('\n').length
+      const size = Math.min(40, Math.max(18, Math.round((png.h / nLines) * 0.45)))
+      const left = Math.min(Math.max(8, x0), PAGE_W - 140)
+      // Çizgili/kareli sayfada ilk satırın tabanı en yakın çizgiye otursun
+      let top = y0
+      if (lineH) {
+        const base = y0 - 24 + (png.h - 48) / nLines
+        const lineY = lines!.first + Math.max(0, Math.round((base - lines!.first) / lineH)) * lineH
+        top = lineY - (lineH / 2 + size * 0.35)
+      }
+      const box: TextBox = {
+        id: uid(), x: left, y: Math.max(0, top), w: Math.min(PAGE_W - left - 16, Math.max(260, x1 - x0 + 60)),
+        text, font, size, color,
+      }
+      const drop = new Set(selection.strokes.filter((i) => page.strokes[i]?.tool === 'pen'))
+      patch({ strokes: page.strokes.filter((_, i) => !drop.has(i)), texts: [...page.texts.filter((t) => t.text.trim()), box] })
+      setSelection(EMPTY_SEL)
+      setTool('text')
+      setActiveText(box.id)
+    } catch {
+      alert('Bağlantı hatası, tekrar dene.')
+    } finally {
+      setOcrBusy(false)
+    }
+  }
+  const activeBox = tool === 'text' ? page.texts.find((t) => t.id === activeText) : undefined
   const removeText = (id: string) => patch({ texts: page.texts.filter((t) => t.id !== id) })
 
   return (
@@ -312,7 +372,14 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
               style={{ background: c }}
               aria-label={COLOR_NAMES[c]}
               title={COLOR_NAMES[c]}
-              onClick={() => (tool === 'highlighter' ? setHlColor(c) : tool === 'note' ? setNoteColor(c) : setColor(c))}
+              onClick={() => {
+                if (tool === 'highlighter') setHlColor(c)
+                else if (tool === 'note') setNoteColor(c)
+                else {
+                  setColor(c)
+                  if (tool === 'text' && activeBox) editText(activeBox.id, { color: c })
+                }
+              }}
             />
           )
         })}
@@ -330,18 +397,37 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
         <span className="sep" />
         {tool === 'text' ? (
           <>
-            <select value={font} onChange={(e) => setFont(e.target.value)} style={{ fontFamily: font }}>
+            <select
+              value={activeBox?.font ?? font}
+              onChange={(e) => {
+                setFont(e.target.value)
+                if (activeBox) editText(activeBox.id, { font: e.target.value })
+              }}
+              style={{ fontFamily: activeBox?.font ?? font }}
+            >
               {FONTS.map((f) => (
                 <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
               ))}
             </select>
-            <input type="number" min={10} max={80} value={fontSize} onChange={(e) => setFontSize(+e.target.value)} />
+            <input
+              type="number"
+              min={10}
+              max={80}
+              value={activeBox?.size ?? fontSize}
+              onChange={(e) => {
+                setFontSize(+e.target.value)
+                if (activeBox && +e.target.value >= 10) editText(activeBox.id, { size: +e.target.value })
+              }}
+            />
           </>
         ) : (
           <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />
         )}
         <span className="spacer" />
         {tool === 'select' && !isEmptySel(selection) && <button onClick={deleteSelected}>🗑 Sil</button>}
+        {tool === 'select' && selection.strokes.length > 0 && (
+          <button className="on" onClick={convertToText} disabled={ocrBusy}>{ocrBusy ? 'Çevriliyor…' : 'Aa Yazıya çevir'}</button>
+        )}
         {tool === 'shape' && (
           <>
             <select value={shapeKind} onChange={(e) => setShapeKind(e.target.value as ShapeKind)}>
@@ -419,6 +505,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
                   value={t.text}
                   rows={Math.max(1, t.text.split('\n').length)}
                   style={{ fontFamily: t.font, fontSize: t.size, color: t.color, lineHeight: lineH ? `${lineH}px` : 1.3 }}
+                  onFocus={() => setActiveText(t.id)}
                   onChange={(e) => editText(t.id, { text: e.target.value })}
                 />
                 {tool === 'text' && (

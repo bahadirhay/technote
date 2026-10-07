@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,mjs}'], maximumFileSizeToCacheInBytes: 5_000_000 },
+      workbox: { navigateFallbackDenylist: [/^\/api\//], globPatterns: ['**/*.{js,css,html,svg,png,mjs}'], maximumFileSizeToCacheInBytes: 5_000_000 },
       manifest: {
         name: 'TechNote',
         short_name: 'TechNote',

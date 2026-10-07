@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { applyMove, applyResize, handleOf, hitScene, lassoSelect, selFromHit, selRect, shapeRect } from './geometry'
+import { drawShape, drawStroke, recognizeShape } from './ink'
+import { applyMove, applyResize, handleOf, hitScene, lassoSelect, selFromHit, selRect } from './geometry'
 import {
   BG_LINES, EMPTY_SEL, PAGE_H, PAGE_W, isEmptySel, uid,
   type Background, type Page, type Pt, type Scene, type Selection, type Shape, type ShapeKind, type Stroke, type Tool,
@@ -55,96 +56,6 @@ const drawBg = (ctx: CanvasRenderingContext2D, bg: Background) => {
   }
 }
 
-// Titreşimi azaltır: komşu noktaların ağırlıklı ortalaması (uçlar sabit)
-const smoothPts = (pts: Pt[]): Pt[] => {
-  let cur = pts
-  for (let k = 0; k < 2 && cur.length > 2; k++) {
-    const out: Pt[] = [cur[0]]
-    for (let i = 1; i < cur.length - 1; i++) {
-      out.push([
-        (cur[i - 1][0] + 2 * cur[i][0] + cur[i + 1][0]) / 4,
-        (cur[i - 1][1] + 2 * cur[i][1] + cur[i + 1][1]) / 4,
-        cur[i][2],
-      ])
-    }
-    out.push(cur[cur.length - 1])
-    cur = out
-  }
-  return cur
-}
-
-const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke, smooth: boolean) => {
-  if (!s.points.length) return
-  const pts = smooth ? smoothPts(s.points) : s.points
-  ctx.save()
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.strokeStyle = s.color
-  if (s.tool === 'highlighter') {
-    ctx.globalAlpha = 0.45
-    ctx.globalCompositeOperation = 'multiply'
-    ctx.lineWidth = s.width * 4
-    ctx.beginPath()
-    ctx.moveTo(pts[0][0], pts[0][1])
-    for (const p of pts) ctx.lineTo(p[0], p[1])
-    ctx.stroke()
-  } else {
-    if (pts.length === 1) {
-      ctx.fillStyle = s.color
-      ctx.beginPath()
-      ctx.arc(pts[0][0], pts[0][1], s.width / 2, 0, Math.PI * 2)
-      ctx.fill()
-    }
-    for (let i = 1; i < pts.length; i++) {
-      const [x0, y0] = pts[i - 1]
-      const [x1, y1, p] = pts[i]
-      ctx.lineWidth = s.width * (0.4 + 1.2 * p)
-      ctx.beginPath()
-      ctx.moveTo(x0, y0)
-      ctx.lineTo(x1, y1)
-      ctx.stroke()
-    }
-  }
-  ctx.restore()
-}
-
-const drawShape = (ctx: CanvasRenderingContext2D, s: Shape) => {
-  const r = shapeRect(s)
-  ctx.save()
-  ctx.strokeStyle = s.color
-  ctx.fillStyle = s.color
-  ctx.lineWidth = s.width
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.beginPath()
-  if (s.kind === 'rect') ctx.rect(r.x, r.y, r.w, r.h)
-  else if (s.kind === 'ellipse') ctx.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2)
-  else if (s.kind === 'triangle') {
-    ctx.moveTo(r.x + r.w / 2, r.y)
-    ctx.lineTo(r.x + r.w, r.y + r.h)
-    ctx.lineTo(r.x, r.y + r.h)
-    ctx.closePath()
-  } else {
-    ctx.moveTo(s.x1, s.y1)
-    ctx.lineTo(s.x2, s.y2)
-    if (s.kind === 'arrow') {
-      const a = Math.atan2(s.y2 - s.y1, s.x2 - s.x1)
-      const len = 14 + s.width * 2.5
-      for (const d of [-0.5, 0.5]) {
-        ctx.moveTo(s.x2, s.y2)
-        ctx.lineTo(s.x2 - len * Math.cos(a + d), s.y2 - len * Math.sin(a + d))
-      }
-    }
-  }
-  if (s.fill && s.kind !== 'line' && s.kind !== 'arrow') {
-    ctx.globalAlpha = 0.18
-    ctx.fill()
-    ctx.globalAlpha = 1
-  }
-  ctx.stroke()
-  ctx.restore()
-}
-
 type Drag =
   | { mode: 'move'; sx: number; sy: number; base: Scene; sel: Selection }
   | { mode: 'resize'; base: Scene; sel: Selection }
@@ -156,6 +67,9 @@ export default function PageCanvas({
   const ref = useRef<HTMLCanvasElement>(null)
   const live = useRef<Stroke | null>(null)
   const liveShape = useRef<Shape | null>(null)
+  const snap = useRef<Shape | null>(null)
+  const snapTimer = useRef<number | undefined>(undefined)
+  const still = useRef<Pt | null>(null)
   const lasso = useRef<Pt[] | null>(null)
   const erasing = useRef<Stroke[] | null>(null)
   const touches = useRef(new Map<number, number>())
@@ -203,7 +117,8 @@ export default function PageCanvas({
     for (const s of sc.shapes) drawShape(ctx, s)
     if (liveShape.current) drawShape(ctx, liveShape.current)
     for (const s of sc.strokes) drawStroke(ctx, s, smooth)
-    if (extra?.stroke) drawStroke(ctx, extra.stroke, smooth)
+    if (snap.current) drawShape(ctx, snap.current)
+    else if (extra?.stroke) drawStroke(ctx, extra.stroke, smooth)
     if (tool === 'select') {
       ctx.save()
       ctx.strokeStyle = '#1d4ed8'
@@ -329,6 +244,8 @@ export default function PageCanvas({
       liveShape.current = { id: uid(), kind: shapeKind, x1: p[0], y1: p[1], x2: p[0], y2: p[1], color, width, fill: shapeFill }
       return
     }
+    snap.current = null
+    still.current = p
     live.current = { tool, color, width, points: [p] }
     draw(undefined, { stroke: live.current })
   }
@@ -366,6 +283,22 @@ export default function PageCanvas({
       } else if (live.current) {
         const pr = ev.pointerType === 'pen' && ev.pressure > 0 ? ev.pressure : 0.5
         live.current.points.push([x, y, pr])
+        // Kalemi ~0,5 sn bekletince çizim düzgün şekle döner
+        if (live.current.tool === 'pen') {
+          if (!still.current || Math.hypot(x - still.current[0], y - still.current[1]) > 4) {
+            still.current = [x, y, pr]
+            window.clearTimeout(snapTimer.current)
+            snap.current = null
+            snapTimer.current = window.setTimeout(() => {
+              const l = live.current
+              const g = l && recognizeShape(l.points)
+              if (l && g) {
+                snap.current = { id: uid(), ...g, color: l.color, width: l.width, fill: false }
+                draw(undefined, { stroke: l })
+              }
+            }, 500)
+          }
+        }
       }
     }
     if (live.current) draw(undefined, { stroke: live.current })
@@ -400,7 +333,13 @@ export default function PageCanvas({
       if (Math.hypot(s.x2 - s.x1, s.y2 - s.y1) > 8) onScene({ ...pageScene(), shapes: [...(page.shapes ?? []), s] })
       else draw()
     }
-    if (live.current) {
+    window.clearTimeout(snapTimer.current)
+    if (live.current && snap.current) {
+      const s = snap.current
+      snap.current = null
+      live.current = null
+      onScene({ ...pageScene(), shapes: [...(page.shapes ?? []), s] })
+    } else if (live.current) {
       onScene({ ...pageScene(), strokes: [...page.strokes, live.current] })
       live.current = null
     } else if (erasing.current) {
