@@ -787,77 +787,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         />
       )}
       <div className="tools">
-        {(['pen', 'highlighter', 'eraser', 'shape', 'note', 'text', 'select'] as Tool[]).map((t) => (
-          <button key={t} className={tool === t ? 'on' : ''} onClick={() => pickTool(t)}>
-            {{ pen: '✎ Kalem', highlighter: '🖍 Fosforlu', eraser: '⌫ Silgi', text: 'T Yazı', select: '⬚ Seç / taşı', shape: '▭ Şekil', note: '🗒 Not' }[t]}
-          </button>
-        ))}
-        <span className="sep" />
-        {(tool === 'highlighter' ? HL_COLORS : tool === 'note' ? NOTE_COLORS : COLORS).map((c) => {
-          const cur = tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color
-          return (
-            <button
-              key={c}
-              className={`swatch ${cur === c ? 'on' : ''}`}
-              style={{ background: c }}
-              aria-label={COLOR_NAMES[c]}
-              title={COLOR_NAMES[c]}
-              onClick={() => {
-                if (tool === 'highlighter') setHlColor(c)
-                else if (tool === 'note') setNoteColor(c)
-                else {
-                  setColor(c)
-                  if (tool === 'text' && activeBox) editText(activeBox.id, { color: c })
-                }
-              }}
-            />
-          )
-        })}
-        <span className="preview" title="Seçili renk ve kalınlık">
-          <i
-            style={{
-              background: tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color,
-              opacity: tool === 'highlighter' ? 0.5 : 1,
-              width: tool === 'text' ? 14 : Math.min(30, Math.max(3, tool === 'highlighter' ? width * 2.5 : width * 1.6)),
-              height: tool === 'text' ? 14 : Math.min(30, Math.max(3, tool === 'highlighter' ? width * 2.5 : width * 1.6)),
-            }}
-          />
-        </span>
-        <span className="cname">{COLOR_NAMES[tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color]}</span>
-        <span className="sep" />
-        {tool === 'text' ? (
-          <>
-            <div className="fontchips">
-              {FONTS.map((f) => (
-                <button
-                  key={f}
-                  className={'fontchip' + ((activeBox?.font ?? font) === f ? ' on' : '')}
-                  style={{ fontFamily: f }}
-                  onClick={() => {
-                    setFont(f)
-                    if (activeBox) editText(activeBox.id, { font: f })
-                  }}
-                >
-                  Merhaba ğüşiöç
-                </button>
-              ))}
-            </div>
-
-          </>
-        ) : (
-          <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />
-        )}
         <span className="spacer" />
-        {tool === 'shape' && (
-          <>
-            <select value={shapeKind} onChange={(e) => setShapeKind(e.target.value as ShapeKind)}>
-              {(Object.keys(SHAPE_NAMES) as ShapeKind[]).map((k) => (
-                <option key={k} value={k}>{SHAPE_NAMES[k]}</option>
-              ))}
-            </select>
-            <button className={shapeFill ? 'on' : ''} onClick={() => setShapeFill(!shapeFill)}>Dolgu</button>
-          </>
-        )}
         <button onClick={() => imgInput.current?.click()} disabled={busy}>🖼 Resim</button>
         <input
           ref={imgInput}
@@ -883,6 +813,19 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         )}
       </div>
 
+      <nav className="dock" aria-label="Araçlar">
+        {(['pen', 'highlighter', 'eraser', 'shape', 'note', 'text', 'select'] as Tool[]).map((t) => (
+          <button
+            key={t}
+            className={tool === t ? 'on' : ''}
+            onClick={() => pickTool(t)}
+            aria-label={{ pen: 'Kalem', highlighter: 'Fosforlu', eraser: 'Silgi', text: 'Yazı', select: 'Seç / taşı', shape: 'Şekil', note: 'Not' }[t]}
+            title={{ pen: 'Kalem', highlighter: 'Fosforlu', eraser: 'Silgi', text: 'Yazı', select: 'Seç / taşı', shape: 'Şekil', note: 'Not' }[t]}
+          >
+            {{ pen: '✎', highlighter: '🖍', eraser: '⌫', text: 'T', select: '⬚', shape: '▭', note: '🗒' }[t]}
+          </button>
+        ))}
+      </nav>
       <div
         className="scroll"
         ref={wrap}
@@ -964,13 +907,79 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
           <button onClick={() => setSelection(EMPTY_SEL)}>Bırak</button>
         </div>
       )}
-      {(tool === 'text' || tool === 'pen' || tool === 'highlighter' || tool === 'eraser') && (
-        <div className="sidepanel" aria-label={tool === 'text' ? 'Yazı boyutu' : 'Kalem boyutu'}>
-          <button aria-label="Büyüt" onClick={() => (tool === 'text' ? setTextSize((activeBox?.size ?? fontSize) + 2) : setWidth(Math.min(12, width + 1)))}>+</button>
-          <b>{tool === 'text' ? (activeBox?.size ?? fontSize) : width}</b>
-          <button aria-label="Küçült" onClick={() => (tool === 'text' ? setTextSize((activeBox?.size ?? fontSize) - 2) : setWidth(Math.max(1, width - 1)))}>−</button>
-        </div>
-      )}
+      <div className="palette">
+        {(tool === 'highlighter' ? HL_COLORS : tool === 'note' ? NOTE_COLORS : COLORS).map((c) => {
+          const cur = tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color
+          return (
+            <button
+              key={c}
+              className={`swatch ${cur === c ? 'on' : ''}`}
+              style={{ background: c }}
+              aria-label={COLOR_NAMES[c]}
+              title={COLOR_NAMES[c]}
+              onClick={() => {
+                if (tool === 'highlighter') setHlColor(c)
+                else if (tool === 'note') setNoteColor(c)
+                else {
+                  setColor(c)
+                  if (tool === 'text' && activeBox) editText(activeBox.id, { color: c })
+                }
+              }}
+            />
+          )
+        })}
+        <span className="preview" title="Seçili renk ve kalınlık">
+          <i
+            style={{
+              background: tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color,
+              opacity: tool === 'highlighter' ? 0.5 : 1,
+              width: tool === 'text' ? 14 : Math.min(30, Math.max(3, tool === 'highlighter' ? width * 2.5 : width * 1.6)),
+              height: tool === 'text' ? 14 : Math.min(30, Math.max(3, tool === 'highlighter' ? width * 2.5 : width * 1.6)),
+            }}
+          />
+        </span>
+        <span className="cname">{COLOR_NAMES[tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color]}</span>
+        <span className="sep" />
+        {tool === 'text' ? (
+          <>
+            <div className="fontchips">
+              {FONTS.map((f) => (
+                <button
+                  key={f}
+                  className={'fontchip' + ((activeBox?.font ?? font) === f ? ' on' : '')}
+                  style={{ fontFamily: f }}
+                  onClick={() => {
+                    setFont(f)
+                    if (activeBox) editText(activeBox.id, { font: f })
+                  }}
+                >
+                  Merhaba ğüşiöç
+                </button>
+              ))}
+            </div>
+
+          </>
+        ) : (
+          <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />
+        )}
+        {tool !== 'select' && tool !== 'shape' && tool !== 'note' && (
+          <span className="sizebar">
+            <button aria-label="Küçült" onClick={() => (tool === 'text' ? setTextSize((activeBox?.size ?? fontSize) - 2) : setWidth(Math.max(1, width - 1)))}>−</button>
+            <b>{tool === 'text' ? (activeBox?.size ?? fontSize) : width}</b>
+            <button aria-label="Büyüt" onClick={() => (tool === 'text' ? setTextSize((activeBox?.size ?? fontSize) + 2) : setWidth(Math.min(12, width + 1)))}>+</button>
+          </span>
+        )}
+        {tool === 'shape' && (
+          <>
+            <select value={shapeKind} onChange={(e) => setShapeKind(e.target.value as ShapeKind)}>
+              {(Object.keys(SHAPE_NAMES) as ShapeKind[]).map((k) => (
+                <option key={k} value={k}>{SHAPE_NAMES[k]}</option>
+              ))}
+            </select>
+            <button className={shapeFill ? 'on' : ''} onClick={() => setShapeFill(!shapeFill)}>Dolgu</button>
+          </>
+        )}
+      </div>
       <footer className="bar pager">
         <button onClick={() => goPage(Math.max(0, idx - 1))} disabled={idx === 0}>‹</button>
         <span>{idx + 1} / {nb.pages.length}</span>
