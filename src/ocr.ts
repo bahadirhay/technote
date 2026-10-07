@@ -25,6 +25,8 @@ const FRIENDLY: Record<string, string> = {
 export interface OcrStatus {
   ready: boolean
   provider?: 'gemini' | 'claude' | null
+  altModel?: string | null
+  altHost?: string | null
   missing: string[]
 }
 

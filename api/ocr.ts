@@ -153,7 +153,7 @@ export async function GET(): Promise<Response> {
   if (!names.length) missing.push('GEMINI_API_KEY')
   if (!env('VITE_SUPABASE_URL')) missing.push('VITE_SUPABASE_URL')
   if (!env('VITE_SUPABASE_ANON_KEY')) missing.push('VITE_SUPABASE_ANON_KEY')
-  return new Response(JSON.stringify({ ready: missing.length === 0, provider: names.join(' → ') || null, missing }), {
+  return new Response(JSON.stringify({ ready: missing.length === 0, provider: names.join(' → ') || null, altModel: env('OCR_ALT_MODEL') ?? null, altHost: (() => { try { return new URL(env('OCR_ALT_BASE_URL') ?? '').host } catch { return null } })(), missing }), {
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   })
 }

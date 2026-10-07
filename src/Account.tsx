@@ -161,7 +161,7 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
             <>
               <p className="muted">
                 Sunucu durumu (sadece yöneticiye görünür):{' '}
-                {srv === null ? 'kontrol ediliyor…' : srv.ready ? `✓ hazır (${srv.provider})` : `✗ eksik: ${srv.missing.join(', ')}`}
+                {srv === null ? 'kontrol ediliyor…' : srv.ready ? `✓ hazır (${srv.provider}) · yedek model: ${srv.altModel ?? 'yok'} · adres: ${srv.altHost ?? 'yok'}` : `✗ eksik: ${srv.missing.join(', ')}`}
               </p>
               <button
                 disabled={ocrBusy}
