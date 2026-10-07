@@ -67,6 +67,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const [bgImage, setBgImage] = useState<HTMLCanvasElement | null>(null)
   const [fitScale, setFitScale] = useState(1)
   const [zoom, setZoom] = useState(1)
+  const [more, setMore] = useState(false)
   const zoomRef = useRef(1)
   const scale = fitScale * zoom
   const [busy, setBusy] = useState(false)
@@ -106,15 +107,15 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const imgInput = useRef<HTMLInputElement>(null)
   const [fingerDraw, setFingerDraw] = useState(() => {
     try {
-      const v = localStorage.getItem('technote:fingerDraw2')
-      return v ? v === '1' : window.innerWidth < 820
+      const v = localStorage.getItem('technote:fingerDraw3')
+      return v ? v === '1' : Math.min(window.innerWidth, window.innerHeight) < 500
     } catch {
-      return window.innerWidth < 820
+      return Math.min(window.innerWidth, window.innerHeight) < 500
     }
   })
   const toggleFinger = () => {
     setFingerDraw(!fingerDraw)
-    try { localStorage.setItem('technote:fingerDraw2', fingerDraw ? '0' : '1') } catch { /* yok say */ }
+    try { localStorage.setItem('technote:fingerDraw3', fingerDraw ? '0' : '1') } catch { /* yok say */ }
   }
   const undo = useRef<Page[][]>([])
   const redo = useRef<Page[][]>([])
@@ -742,13 +743,14 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const removeText = (id: string) => patch({ texts: page.texts.filter((t) => t.id !== id) })
 
   return (
-    <div className="editor">
+    <div className={`editor${more ? ' more' : ''}`}>
       <header className="bar">
         <button onClick={() => void goBack()}>‹ Defterler</button>
         <strong className="title">{nb.name}</strong>
         <span className={`syncdot ${sync ?? 'ok'}`} title={sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi' : 'Kaydedildi'} />
         <span className="spacer" />
         {zoom > 1 && <button onClick={() => applyZoom(1)} title="Sayfaya sığdır">🔍 %{Math.round(zoom * 100)} ✕</button>}
+        <button className="morebtn" onClick={() => setMore(!more)} aria-label="Diğer araçlar">⋯</button>
         <button onClick={doUndo} title="Geri al">↶</button>
         <button onClick={doRedo} title="Yinele">↷</button>
         <button onClick={() => pdfInput.current?.click()} disabled={busy}>
