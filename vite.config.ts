@@ -9,7 +9,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,
-      workbox: { navigateFallbackDenylist: [/^\/api\//], globPatterns: ['**/*.{js,css,html,svg,png,mjs}'], maximumFileSizeToCacheInBytes: 5_000_000 },
+      workbox: { navigateFallbackDenylist: [/^\/api\//], globPatterns: ['**/*.{js,css,html,svg,png,mjs,woff2}'], maximumFileSizeToCacheInBytes: 5_000_000 },
       manifest: {
         name: 'TechNote',
         short_name: 'TechNote',

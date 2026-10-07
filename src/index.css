@@ -138,3 +138,15 @@ button.rec-on { background: #dc2626; color: #fff; border-color: #dc2626; }
 .modal button { min-height: 46px; }
 .modal button.big { min-height: 60px; font-size: 18px; font-weight: 700; }
 .check.small { font-size: 13px; color: #475569; }
+
+@font-face { font-family: 'Caveat'; src: url('/fonts/caveat.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Kalam'; src: url('/fonts/kalam.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Patrick Hand'; src: url('/fonts/patrick-hand.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Dancing Script'; src: url('/fonts/dancing-script.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Courgette'; src: url('/fonts/courgette.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Indie Flower'; src: url('/fonts/indie-flower.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Lora Italic'; src: url('/fonts/lora-italic.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Playfair Italic'; src: url('/fonts/playfair-italic.woff2') format('woff2'); font-display: swap; }
+.fontchips { display: flex; gap: 6px; overflow-x: auto; max-width: 60vw; }
+.fontchip { flex: none; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; font-size: 18px; white-space: nowrap; }
+.fontchip.on { border-color: #2563eb; background: #dbeafe; }

@@ -42,7 +42,7 @@ const COLOR_NAMES: Record<string, string> = {
   '#facc15': 'Sarı', '#4ade80': 'Açık yeşil', '#f472b6': 'Pembe', '#38bdf8': 'Açık mavi', '#fb923c': 'Turuncu', '#a78bfa': 'Açık mor',
   '#fde68a': 'Sarı not', '#bbf7d0': 'Yeşil not', '#fbcfe8': 'Pembe not', '#bfdbfe': 'Mavi not', '#fed7aa': 'Turuncu not', '#e9d5ff': 'Mor not',
 }
-const FONTS = ['system-ui', 'Georgia', 'Courier New', 'Comic Sans MS', 'Marker Felt', 'Bradley Hand', 'Snell Roundhand']
+const FONTS = ['system-ui', 'Caveat', 'Kalam', 'Patrick Hand', 'Dancing Script', 'Courgette', 'Indie Flower', 'Lora Italic', 'Playfair Italic', 'Georgia']
 
 interface Props {
   nb: Notebook
@@ -703,18 +703,21 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         <span className="sep" />
         {tool === 'text' ? (
           <>
-            <select
-              value={activeBox?.font ?? font}
-              onChange={(e) => {
-                setFont(e.target.value)
-                if (activeBox) editText(activeBox.id, { font: e.target.value })
-              }}
-              style={{ fontFamily: activeBox?.font ?? font }}
-            >
+            <div className="fontchips">
               {FONTS.map((f) => (
-                <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                <button
+                  key={f}
+                  className={'fontchip' + ((activeBox?.font ?? font) === f ? ' on' : '')}
+                  style={{ fontFamily: f }}
+                  onClick={() => {
+                    setFont(f)
+                    if (activeBox) editText(activeBox.id, { font: f })
+                  }}
+                >
+                  Merhaba ğüşiöç
+                </button>
               ))}
-            </select>
+            </div>
             <input
               type="number"
               min={10}
@@ -806,7 +809,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
                 <textarea
                   autoFocus={!t.text}
                   value={t.text}
-                  rows={Math.max(1, t.text.split('\n').length)}
+                  rows={Math.max(t.text ? 1 : 3, t.text.split('\n').length)}
                   style={{ fontFamily: t.font, fontSize: t.size, color: t.color, lineHeight: lineH ? `${lineH}px` : 1.3 }}
                   lang="tr"
                   placeholder="Klavyeyle yaz ya da Apple Pencil ile buraya yaz (Scribble)"
