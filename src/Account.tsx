@@ -212,6 +212,19 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
         <section>
           <button onClick={() => supabase.auth.signOut()}>Çıkış yap</button>
           <p className="muted">Sürüm: {__APP_VERSION__}</p>
+          <button
+            onClick={async () => {
+              try {
+                const regs = await navigator.serviceWorker?.getRegistrations()
+                await Promise.all((regs ?? []).map((r) => r.unregister()))
+                const keys = await caches?.keys()
+                await Promise.all((keys ?? []).map((k) => caches.delete(k)))
+              } catch { /* yok say */ }
+              location.reload()
+            }}
+          >
+            Uygulamayı güncelle (önbelleği temizle)
+          </button>
         </section>
       </div>
     </div>
