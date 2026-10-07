@@ -100,7 +100,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const imgInput = useRef<HTMLInputElement>(null)
   const [fingerDraw, setFingerDraw] = useState(() => {
     try {
-      const v = localStorage.getItem('technote:fingerDraw')
+      const v = localStorage.getItem('technote:fingerDraw2')
       return v ? v === '1' : window.innerWidth < 820
     } catch {
       return window.innerWidth < 820
@@ -108,7 +108,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   })
   const toggleFinger = () => {
     setFingerDraw(!fingerDraw)
-    try { localStorage.setItem('technote:fingerDraw', fingerDraw ? '0' : '1') } catch { /* yok say */ }
+    try { localStorage.setItem('technote:fingerDraw2', fingerDraw ? '0' : '1') } catch { /* yok say */ }
   }
   const undo = useRef<Page[][]>([])
   const redo = useRef<Page[][]>([])
