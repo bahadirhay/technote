@@ -22,12 +22,13 @@ export interface TextBox {
   color: string
 }
 
-export type Background = 'blank' | 'lined' | 'grid' | 'dotted' | 'cornell'
+export type Background = 'blank' | 'lined' | 'grid' | 'gridL' | 'dotted' | 'cornell'
 
 export const BG_NAMES: Record<Background, string> = {
   blank: 'Boş',
   lined: 'Çizgili',
   grid: 'Kareli',
+  gridL: 'Büyük kareli (FreeNotes gibi)',
   dotted: 'Noktalı',
   cornell: 'Cornell',
 }
@@ -36,6 +37,7 @@ export const BG_NAMES: Record<Background, string> = {
 export const BG_LINES: Partial<Record<Background, { first: number; step: number }>> = {
   lined: { first: 80, step: 34 },
   grid: { first: 0, step: 30 },
+  gridL: { first: 0, step: 64 },
   dotted: { first: 0, step: 30 },
   cornell: { first: 100, step: 34 },
 }

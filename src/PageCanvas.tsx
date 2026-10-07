@@ -36,9 +36,10 @@ const drawBg = (ctx: CanvasRenderingContext2D, bg: Background) => {
   ctx.lineWidth = 1
   ctx.beginPath()
   if (bg === 'lined') for (let y = L!.first; y < PAGE_H; y += L!.step) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y) }
-  if (bg === 'grid') {
-    for (let y = 0; y < PAGE_H; y += 30) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y) }
-    for (let x = 0; x < PAGE_W; x += 30) { ctx.moveTo(x, 0); ctx.lineTo(x, PAGE_H) }
+  if (bg === 'grid' || bg === 'gridL') {
+    const st = L!.step
+    for (let y = 0; y < PAGE_H; y += st) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y) }
+    for (let x = 0; x < PAGE_W; x += st) { ctx.moveTo(x, 0); ctx.lineTo(x, PAGE_H) }
   }
   if (bg === 'cornell') for (let y = L!.first; y < 930; y += L!.step) { ctx.moveTo(190, y); ctx.lineTo(PAGE_W, y) }
   ctx.stroke()
