@@ -83,6 +83,28 @@ export const downloadImage = async (id: string): Promise<Blob | undefined> => {
   return error || !data ? undefined : data
 }
 
+export const uploadAudio = async (id: string, blob: Blob) => {
+  const { data } = await supabase.auth.getUser()
+  if (!data.user) throw new Error('Oturum yok')
+  const { error } = await supabase.storage
+    .from('pdfs')
+    .upload(`${data.user.id}/aud-${id}`, blob, { contentType: blob.type || 'audio/mp4', upsert: true })
+  if (error) throw new Error(error.message)
+}
+
+export const downloadAudio = async (id: string): Promise<Blob | undefined> => {
+  const { data: u } = await supabase.auth.getUser()
+  if (!u.user) return undefined
+  const { data, error } = await supabase.storage.from('pdfs').download(`${u.user.id}/aud-${id}`)
+  return error || !data ? undefined : data
+}
+
+export const removeAudio = async (id: string) => {
+  const { data } = await supabase.auth.getUser()
+  if (!data.user) return
+  await supabase.storage.from('pdfs').remove([`${data.user.id}/aud-${id}`])
+}
+
 // --- yönetici ---
 export const listProfiles = async () =>
   must(await supabase.from('profiles').select('*').order('created_at', { ascending: false })) as Profile[]

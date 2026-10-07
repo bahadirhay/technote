@@ -7,6 +7,8 @@ export interface Stroke {
   color: string
   width: number
   points: Pt[]
+  // Ses kaydı sırasında çizildiyse: hangi kayıt ve kaydın kaçıncı ms'si (duraklatma süreleri hariç)
+  rec?: { id: string; ms: number }
 }
 
 export interface TextBox {
@@ -109,12 +111,22 @@ export interface Page {
   pdf?: { docId: string; pageNum: number }
 }
 
+export interface Recording {
+  id: string
+  name: string
+  startedAt: number
+  durationMs: number
+  mime: string
+  size: number
+}
+
 export interface Notebook {
   id: string
   name: string
   color: string
   createdAt: number
   pages: Page[]
+  recordings?: Recording[]
 }
 
 export const PAGE_W = 800

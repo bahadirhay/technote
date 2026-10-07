@@ -60,3 +60,14 @@ Kullanım:
 ## Şekil düzeltme
 
 Kalemle şekil çiz, parmağını kaldırmadan yarım saniye bekle: daire, dikdörtgen, üçgen ve çizgi düzgün şekle döner.
+
+## Kamera ve ses kaydı
+
+- **📷 Kamera:** Çek (fotoğraf sayfaya eklenir, ekran açık kalır, art arda çekilebilir), ⏸ Dondur / ▶ Devam (önizlemeyi
+  durdurur), 🔄 Çevir (ön/arka kamera), ⏹ Kapat (kamerayı serbest bırakır).
+- **🎙 Kayıt:** ⏺ Başlat, ⏸ Duraklat, ▶ Devam, ⏹ Durdur. Süre duraklatmaları saymaz. Kayıt sırasında çizilen her çizgiye
+  kaydın zamanı eklenir; çizgiyi seçip "▶ Buradan dinle" ile o ana atlanır.
+- **🎧 Kayıtlar:** Oynat / duraklat / durdur, 10 sn ileri-geri, hız, yeniden adlandır, sil. Küçültünce yazarken dinlenir.
+- Sesler kullanıcıya özel yolda saklanır (`<kullanıcı>/aud-<id>`), mevcut depolama kuralı geçerlidir. En uzun kayıt 2 saat.
+- Bilinen sınır: web uygulamasında ekran kilitlenirse veya başka uygulamaya geçilirse kayıt durabilir
+  (ekran kapanmasın diye Wake Lock istenir). Yedek dosyasına ses dahil değildir.

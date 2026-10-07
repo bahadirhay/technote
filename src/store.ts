@@ -1,6 +1,6 @@
 import { get, set, del } from 'idb-keyval'
 import type { Notebook } from './types'
-import { downloadImage, downloadPdf, uploadImage, uploadPdf } from './cloud'
+import { downloadAudio, downloadImage, downloadPdf, removeAudio, uploadAudio, uploadImage, uploadPdf } from './cloud'
 
 const KEY = 'technote:notebooks'
 
@@ -38,6 +38,24 @@ export const loadImage = async (id: string) => {
   const remote = await downloadImage(id)
   if (remote) await set(imgKey(id), remote)
   return remote
+}
+
+const audKey = (id: string) => `technote:aud:${id}`
+// Önce cihaza yazılır (kayıt asla kaybolmasın), sonra buluta yüklenir; yükleme başarısızsa hata fırlatır
+export const saveAudio = async (id: string, blob: Blob) => {
+  await set(audKey(id), blob)
+  await uploadAudio(id, blob)
+}
+export const loadAudio = async (id: string) => {
+  const local = await get<Blob>(audKey(id))
+  if (local) return local
+  const remote = await downloadAudio(id)
+  if (remote) await set(audKey(id), remote)
+  return remote
+}
+export const deleteAudio = async (id: string) => {
+  await del(audKey(id))
+  await removeAudio(id).catch(() => undefined)
 }
 
 export const deletePdf = (id: string) => del(`technote:pdf:${id}`)

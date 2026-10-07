@@ -23,6 +23,7 @@ interface Props {
   onPlaceNote: (x: number, y: number) => void
   scrollRef: React.RefObject<HTMLDivElement | null>
   fingerDraw: boolean
+  recClock?: () => { id: string; ms: number } | null
 }
 
 const HANDLE = 22
@@ -62,7 +63,7 @@ type Drag =
 
 export default function PageCanvas({
   page, tool, color, width, shapeKind, shapeFill, bgImage, imgs, selection, smooth,
-  onScene, onSelect, onPlaceText, onPlaceNote, scrollRef, fingerDraw,
+  onScene, onSelect, onPlaceText, onPlaceNote, scrollRef, fingerDraw, recClock,
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
   const live = useRef<Stroke | null>(null)
@@ -246,7 +247,8 @@ export default function PageCanvas({
     }
     snap.current = null
     still.current = p
-    live.current = { tool, color, width, points: [p] }
+    const rc = recClock?.()
+    live.current = { tool, color, width, points: [p], ...(rc ? { rec: rc } : {}) }
     draw(undefined, { stroke: live.current })
   }
 

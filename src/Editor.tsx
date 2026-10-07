@@ -5,7 +5,11 @@ import { deleteSelection } from './geometry'
 import { hashStrokes, strokesToPng } from './ink'
 import { indexEnabled } from './search'
 import { renderPdfPage, openPdf } from './pdf'
-import { loadImage, saveImage, savePdf } from './store'
+import { deleteAudio, loadImage, saveAudio, saveImage, savePdf } from './store'
+import CameraSheet from './CameraSheet'
+import RecorderBar, { type RecUi } from './RecorderBar'
+import Recordings, { type Jump } from './Recordings'
+import { AudioRecorder, fmtClock, fmtDate } from './media'
 import {
   BG_LINES,
   BG_NAMES,
@@ -24,6 +28,7 @@ import {
   type Sticky,
   type Notebook,
   type Page,
+  type Recording,
   type TextBox,
   type Tool,
 } from './types'
@@ -235,7 +240,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
     }
   }
 
-  const addImage = async (file: File) => {
+  const addImage = async (file: Blob) => {
     setBusy(true)
     try {
       const url = URL.createObjectURL(file)
@@ -316,6 +321,147 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   useEffect(() => {
     nbRef.current = nb
   })
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  })
+
+  // --- Kamera ve ses kaydı ---
+  const [camOpen, setCamOpen] = useState(false)
+  const [recOpen, setRecOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [jump, setJump] = useState<Jump | null>(null)
+  const [recState, setRecState] = useState<RecUi>('idle')
+  const [recMs, setRecMs] = useState(0)
+  const [recErr, setRecErr] = useState('')
+  const recRef = useRef<{ id: string; startedAt: number; rec: AudioRecorder } | null>(null)
+  const recStateRef = useRef<RecUi>('idle')
+  const setRec = (st: RecUi) => {
+    recStateRef.current = st
+    setRecState(st)
+  }
+  const MAX_REC_MS = 2 * 3600 * 1000
+
+  const startRecording = async () => {
+    setRecErr('')
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      return setRecErr('Bu tarayıcı ses kaydını desteklemiyor.')
+    }
+    try {
+      const rec = await AudioRecorder.create()
+      recRef.current = { id: uid(), startedAt: Date.now(), rec }
+      setRecMs(0)
+      setRec('recording')
+    } catch (e) {
+      const n = (e as { name?: string })?.name
+      setRecErr(
+        n === 'NotAllowedError'
+          ? 'Mikrofon izni verilmedi. iPad: Ayarlar → Safari → Mikrofon bölümünden izin ver, sonra tekrar dene.'
+          : 'Mikrofon açılamadı. Başka bir uygulama kullanıyor olabilir.',
+      )
+    }
+  }
+  const pauseRecording = () => {
+    recRef.current?.rec.pause()
+    setRec('paused')
+  }
+  const resumeRecording = () => {
+    recRef.current?.rec.resume()
+    setRec('recording')
+  }
+  const stopRecording = async (): Promise<void> => {
+    const cur = recRef.current
+    if (!cur) return
+    recRef.current = null
+    setRec('saving')
+    const { blob, durationMs, mime } = await cur.rec.stop()
+    if (durationMs < 1000 || blob.size === 0) {
+      setRec('idle')
+      return
+    }
+    const meta: Recording = {
+      id: cur.id,
+      name: `Ders kaydı ${fmtDate(cur.startedAt)}`,
+      startedAt: cur.startedAt,
+      durationMs: Math.round(durationMs),
+      mime,
+      size: blob.size,
+    }
+    try {
+      await saveAudio(meta.id, blob)
+    } catch {
+      alert('Kayıt buluta yüklenemedi; şimdilik bu cihazda duruyor.')
+    }
+    const base = nbRef.current
+    onChangeRef.current({ ...base, recordings: [...(base.recordings ?? []), meta] })
+    setRec('idle')
+    setRecOpen(false)
+  }
+  // Süre sayacı + en uzun kayıt sınırı
+  useEffect(() => {
+    if (recState !== 'recording' && recState !== 'paused') return
+    const t = window.setInterval(() => {
+      const cur = recRef.current
+      if (!cur) return
+      const ms = cur.rec.ms()
+      setRecMs(ms)
+      if (ms >= MAX_REC_MS) void stopRecording()
+    }, 250)
+    return () => window.clearInterval(t)
+  }, [recState])
+  // Uygulama arka plana gidip mikrofon kesildiyse: o ana kadarki kısmı kaydet
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && recRef.current?.rec.isDead()) {
+        void stopRecording()
+        alert('Uygulama arka plana geçtiği için kayıt durdu. O ana kadarki kısım kaydedildi.')
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+  // Defterden çıkılırsa sürmekte olan kayıt kaybolmasın
+  useEffect(
+    () => () => {
+      if (recRef.current) void stopRecording()
+    },
+    [],
+  )
+  const recClock = () =>
+    recStateRef.current === 'recording' && recRef.current
+      ? { id: recRef.current.id, ms: Math.round(recRef.current.rec.ms()) }
+      : null
+  const renameRec = (id: string) => {
+    const base = nbRef.current
+    const r = base.recordings?.find((x) => x.id === id)
+    const name = prompt('Kayıt adı', r?.name ?? '')?.trim()
+    if (name) onChange({ ...base, recordings: (base.recordings ?? []).map((x) => (x.id === id ? { ...x, name } : x)) })
+  }
+  const deleteRec = (id: string) => {
+    if (!confirm('Bu ses kaydı silinsin mi? Geri alınamaz.')) return
+    const base = nbRef.current
+    onChange({ ...base, recordings: (base.recordings ?? []).filter((x) => x.id !== id) })
+    void deleteAudio(id)
+  }
+  const listenable = selection.strokes
+    .map((i) => page.strokes[i])
+    .find((st) => st?.rec && nb.recordings?.some((r) => r.id === st.rec!.id))
+  const listenFrom = () => {
+    if (!listenable?.rec) return
+    const { id, ms } = listenable.rec
+    setJump((j) => ({ id, ms: Math.max(0, ms - 3000), n: (j?.n ?? 0) + 1 }))
+    setPanelOpen(true)
+  }
+  const goBack = async () => {
+    if (recStateRef.current === 'recording' || recStateRef.current === 'paused') {
+      if (!confirm('Ses kaydı sürüyor. Durdurup kaydedelim mi?')) return
+      await stopRecording()
+    }
+    sweepEmpty()
+    void indexPage(page.id)
+    onBack()
+  }
+
   const indexing = useRef(new Set<string>())
   const indexBlocked = useRef(false)
   const indexPage = async (pageId: string) => {
@@ -411,7 +557,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   return (
     <div className="editor">
       <header className="bar">
-        <button onClick={() => { sweepEmpty(); void indexPage(page.id); onBack() }}>‹ Defterler</button>
+        <button onClick={() => void goBack()}>‹ Defterler</button>
         <strong className="title">{nb.name}</strong>
         <span className={`syncdot ${sync ?? 'ok'}`} title={sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi' : 'Kaydedildi'} />
         <span className="spacer" />
@@ -433,6 +579,25 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         />
       </header>
 
+      <div className="mediabar">
+        <button onClick={() => setCamOpen(true)}>📷 Kamera</button>
+        <button className={recState === 'idle' ? '' : 'rec-on'} onClick={() => setRecOpen(true)}>
+          🎙 Kayıt{recState === 'recording' || recState === 'paused' ? ` ${fmtClock(recMs)}` : ''}
+        </button>
+        <button onClick={() => setPanelOpen(!panelOpen)}>🎧 Kayıtlar ({nb.recordings?.length ?? 0})</button>
+      </div>
+      {recOpen && (
+        <RecorderBar
+          state={recState}
+          ms={recMs}
+          error={recErr}
+          onStart={() => void startRecording()}
+          onPause={pauseRecording}
+          onResume={resumeRecording}
+          onStop={() => void stopRecording()}
+          onClose={() => setRecOpen(false)}
+        />
+      )}
       <div className="tools">
         {(['pen', 'highlighter', 'eraser', 'shape', 'note', 'text', 'select'] as Tool[]).map((t) => (
           <button key={t} className={tool === t ? 'on' : ''} onClick={() => pickTool(t)}>
@@ -555,6 +720,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
               onScene={(sc) => patch(sc)}
               onSelect={setSelection}
               onPlaceNote={placeNote}
+              recClock={recClock}
               onPlaceText={placeText}
             />
             {(page.notes ?? []).map((n) => (
@@ -598,6 +764,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
             {selection.strokes.length + selection.shapes.length + selection.images.length + selection.notes.length} seçili
           </span>
           <button onClick={deleteSelected}>🗑 Sil</button>
+          {listenable && <button onClick={listenFrom}>▶ Buradan dinle</button>}
           {ocrReady && selection.strokes.length > 0 && (
             <button className="on" onClick={convertToText} disabled={ocrBusy}>
               {ocrBusy ? 'Çevriliyor…' : 'Aa Yazıya çevir'}
@@ -617,6 +784,16 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         <button onClick={() => addPage()}>+ Sayfa</button>
         <button onClick={delPage}>Sayfayı sil</button>
       </footer>
+      {panelOpen && (
+        <Recordings
+          recordings={nb.recordings ?? []}
+          jump={jump}
+          onClose={() => setPanelOpen(false)}
+          onDelete={deleteRec}
+          onRename={renameRec}
+        />
+      )}
+      {camOpen && <CameraSheet onCapture={(b) => void addImage(b)} onClose={() => setCamOpen(false)} />}
     </div>
   )
 }
