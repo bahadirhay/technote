@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PageCanvas from './PageCanvas'
-import { readHandwriting } from './ocr'
+import { OcrFailure, ocrAvailable, readHandwriting } from './ocr'
 import { deleteSelection } from './geometry'
 import { hashStrokes, strokesToPng } from './ink'
 import { indexEnabled } from './search'
@@ -60,6 +60,24 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const [busy, setBusy] = useState(false)
   const [activeText, setActiveText] = useState<string | null>(null)
   const [ocrBusy, setOcrBusy] = useState(false)
+  // Sunucuda el yazısı servisi kurulu değilse ilgili düğmeler hiç gösterilmez
+  const [ocrReady, setOcrReady] = useState(false)
+  const ocrReadyRef = useRef(false)
+  useEffect(() => {
+    let live = true
+    void ocrAvailable().then((ok) => {
+      if (!live) return
+      ocrReadyRef.current = ok
+      setOcrReady(ok)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+  const ocrDown = () => {
+    ocrReadyRef.current = false
+    setOcrReady(false)
+  }
   const [selection, setSelection] = useState<Selection>(EMPTY_SEL)
   const [shapeKind, setShapeKind] = useState<ShapeKind>('rect')
   const [shapeFill, setShapeFill] = useState(false)
@@ -301,7 +319,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const indexing = useRef(new Set<string>())
   const indexBlocked = useRef(false)
   const indexPage = async (pageId: string) => {
-    if (indexBlocked.current || indexing.current.has(pageId) || !indexEnabled()) return
+    if (indexBlocked.current || !ocrReadyRef.current || indexing.current.has(pageId) || !indexEnabled()) return
     const pg = nbRef.current.pages.find((p) => p.id === pageId)
     if (!pg) return
     const pen = pg.strokes.filter((s) => s.tool === 'pen')
@@ -318,8 +336,9 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
       const text = await readHandwriting(png.b64)
       onPageMeta(nbRef.current.id, pageId, { searchText: text === '[okunamadı]' ? '' : text, indexedHash: hash })
     } catch (e) {
-      // Kota doldu / kurulu değil / yetki yok: bu oturumda tekrar deneme
-      if (/hakkın doldu|kurulmadı|onaylı|süresi dolmuş|kotası/.test((e as Error).message)) indexBlocked.current = true
+      // Kota doldu / kurulu değil / yetki yok: bu oturumda tekrar deneme (sessizce)
+      if (e instanceof OcrFailure && e.unavailable) ocrDown()
+      if (/hakkın doldu|onaylı|süresi dolmuş|kotası|kullanılamıyor/.test((e as Error).message)) indexBlocked.current = true
     } finally {
       indexing.current.delete(pageId)
     }
@@ -346,6 +365,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
       try {
         text = await readHandwriting(png.b64)
       } catch (e) {
+        if (e instanceof OcrFailure && e.unavailable) ocrDown()
         return alert((e as Error).message)
       }
       if (!text || text === '[okunamadı]') return alert('Yazı okunamadı. Daha net veya daha büyük yazmayı dene.')
@@ -576,7 +596,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
             {selection.strokes.length + selection.shapes.length + selection.images.length + selection.notes.length} seçili
           </span>
           <button onClick={deleteSelected}>🗑 Sil</button>
-          {selection.strokes.length > 0 && (
+          {ocrReady && selection.strokes.length > 0 && (
             <button className="on" onClick={convertToText} disabled={ocrBusy}>
               {ocrBusy ? 'Çevriliyor…' : 'Aa Yazıya çevir'}
             </button>
@@ -589,7 +609,9 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         <span>{idx + 1} / {nb.pages.length}</span>
         <button onClick={() => goPage(Math.min(nb.pages.length - 1, idx + 1))} disabled={idx >= nb.pages.length - 1}>›</button>
         <span className="spacer" />
-        <button onClick={convertPage} disabled={ocrBusy} title="Sayfadaki tüm el yazısını yazıya çevir">Aa Çevir</button>
+        {ocrReady && (
+          <button onClick={convertPage} disabled={ocrBusy} title="Sayfadaki tüm el yazısını yazıya çevir">Aa Çevir</button>
+        )}
         <button onClick={() => addPage()}>+ Sayfa</button>
         <button onClick={delPage}>Sayfayı sil</button>
       </footer>

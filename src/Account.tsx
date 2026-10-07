@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { selfTest } from './ocr'
+import { useEffect, useState } from 'react'
+import { OcrFailure, ocrStatus, selfTest, type OcrStatus } from './ocr'
 import { indexEnabled, setIndexEnabled } from './search'
 import { supabase, updateDisplayName, updatePassword, type Profile } from './cloud'
 
@@ -41,6 +41,10 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
   const [ocrMsg, setOcrMsg] = useState('')
   const [ocrBusy, setOcrBusy] = useState(false)
   const [indexOn, setIndexOn] = useState(indexEnabled())
+  const [srv, setSrv] = useState<OcrStatus | null>(null)
+  useEffect(() => {
+    if (profile.is_admin) void ocrStatus().then(setSrv)
+  }, [profile.is_admin])
 
   const saveName = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -110,24 +114,32 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
             />
             Arama için el yazımı arka planda tanı (yazın değişmez; her sayfa için en fazla bir istek)
           </label>
-          <button
-            disabled={ocrBusy}
-            onClick={async () => {
-              setOcrBusy(true)
-              setOcrMsg('Deneniyor…')
-              try {
-                const t = await selfTest()
-                setOcrMsg(t ? `✓ Çalışıyor. Okunan: "${t}"` : 'Servis cevap verdi ama yazı okunamadı.')
-              } catch (e) {
-                setOcrMsg(`✗ ${(e as Error).message}`)
-              } finally {
-                setOcrBusy(false)
-              }
-            }}
-          >
-            Servisi test et
-          </button>
-          {ocrMsg && <p className="muted">{ocrMsg}</p>}
+          {profile.is_admin && (
+            <>
+              <p className="muted">
+                Sunucu durumu (sadece yöneticiye görünür):{' '}
+                {srv === null ? 'kontrol ediliyor…' : srv.ready ? `✓ hazır (${srv.provider})` : `✗ eksik: ${srv.missing.join(', ')}`}
+              </p>
+              <button
+                disabled={ocrBusy}
+                onClick={async () => {
+                  setOcrBusy(true)
+                  setOcrMsg('Deneniyor…')
+                  try {
+                    const t = await selfTest()
+                    setOcrMsg(t ? `✓ Çalışıyor. Okunan: "${t}"` : 'Servis cevap verdi ama yazı okunamadı.')
+                  } catch (e) {
+                    setOcrMsg(`✗ ${(e as OcrFailure).technical || (e as Error).message}`)
+                  } finally {
+                    setOcrBusy(false)
+                  }
+                }}
+              >
+                Servisi test et
+              </button>
+              {ocrMsg && <p className="muted">{ocrMsg}</p>}
+            </>
+          )}
         </section>
 
         <section>

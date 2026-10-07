@@ -7,7 +7,13 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 const MAX_B64 = 4_000_000
-const DAILY_LIMIT = Number(process.env.OCR_DAILY_LIMIT || 30)
+
+// Ortam değişkenini temizler: baştaki/sondaki boşluk ve yanlışlıkla yapıştırılan tırnaklar
+const env = (name: string): string | undefined => {
+  const v = process.env[name]?.trim().replace(/^["']+|["']+$/g, '').trim()
+  return v || undefined
+}
+const DAILY_LIMIT = Number(env('OCR_DAILY_LIMIT') || 30)
 
 const SYSTEM =
   'Sen bir el yazısı okuyucusun. Görüntüdeki el yazısını aynen yazıya çevir. ' +
@@ -30,8 +36,9 @@ class OcrError extends Error {
 const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
 
 async function readWithGemini(image: string, apiKey: string): Promise<string> {
-  const base = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com'
-  const models = process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : GEMINI_MODELS
+  const base = env('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com'
+  const pinned = env('GEMINI_MODEL')
+  const models = pinned ? [pinned] : GEMINI_MODELS
   let last: OcrError = new OcrError('upstream', 502)
   for (const model of models) {
     const res = await fetch(`${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -70,7 +77,7 @@ async function readWithClaude(image: string, apiKey: string): Promise<string> {
   const client = new Anthropic({ apiKey })
   try {
     const response = await client.messages.create({
-      model: process.env.OCR_MODEL || 'claude-opus-5-5',
+      model: env('OCR_MODEL') || 'claude-opus-5-5',
       max_tokens: 4000,
       output_config: { effort: 'low' },
       system: SYSTEM,
@@ -94,12 +101,27 @@ async function readWithClaude(image: string, apiKey: string): Promise<string> {
   }
 }
 
+// Durum kontrolü: hangi ayar eksik? (sadece ayar ADLARI döner, değerler asla)
+export async function GET(): Promise<Response> {
+  const missing: string[] = []
+  if (!env('GEMINI_API_KEY') && !env('ANTHROPIC_API_KEY')) missing.push('GEMINI_API_KEY')
+  if (!env('VITE_SUPABASE_URL')) missing.push('VITE_SUPABASE_URL')
+  if (!env('VITE_SUPABASE_ANON_KEY')) missing.push('VITE_SUPABASE_ANON_KEY')
+  const provider = env('GEMINI_API_KEY') ? 'gemini' : env('ANTHROPIC_API_KEY') ? 'claude' : null
+  return new Response(JSON.stringify({ ready: missing.length === 0, provider, missing }), {
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  })
+}
+
 export async function POST(request: Request): Promise<Response> {
-  const geminiKey = process.env.GEMINI_API_KEY
-  const claudeKey = process.env.ANTHROPIC_API_KEY
-  const supaUrl = process.env.VITE_SUPABASE_URL
-  const supaKey = process.env.VITE_SUPABASE_ANON_KEY
-  if ((!geminiKey && !claudeKey) || !supaUrl || !supaKey) return json({ error: 'not_configured' }, 503)
+  const geminiKey = env('GEMINI_API_KEY')
+  const claudeKey = env('ANTHROPIC_API_KEY')
+  const supaUrl = env('VITE_SUPABASE_URL')
+  const supaKey = env('VITE_SUPABASE_ANON_KEY')
+  if ((!geminiKey && !claudeKey) || !supaUrl || !supaKey) {
+    console.error('ocr: eksik ayar', { gemini: !!geminiKey, claude: !!claudeKey, supabaseUrl: !!supaUrl, supabaseKey: !!supaKey })
+    return json({ error: 'not_configured', detail: 'Sunucuda ayar eksik' }, 503)
+  }
 
   // 1) Oturum ve onay kontrolü (kullanıcının kendi belirteciyle, RLS geçerli)
   const authorization = request.headers.get('authorization') ?? ''
@@ -135,7 +157,10 @@ export async function POST(request: Request): Promise<Response> {
     const text = geminiKey ? await readWithGemini(image, geminiKey) : await readWithClaude(image, claudeKey!)
     return json({ text })
   } catch (e) {
-    if (e instanceof OcrError) return json({ error: e.code, status: e.upstream, detail: e.detail }, e.status)
+    if (e instanceof OcrError) {
+      console.error('ocr hata', e.code, e.upstream, e.detail)
+      return json({ error: e.code, status: e.upstream, detail: e.detail }, e.status)
+    }
     return json({ error: 'server' }, 500)
   }
 }

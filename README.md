@@ -36,6 +36,10 @@ Vercel → Settings → Environment Variables:
 - `OCR_DAILY_LIMIT` (isteğe bağlı): kullanıcı başı günlük çeviri sayısı, varsayılan 30. Sınır için `supabase/migration-003-ocr-limit.sql` çalıştırılmalı.
 - `ANTHROPIC_API_KEY` (isteğe bağlı, ÜCRETLİ): sadece `GEMINI_API_KEY` yoksa kullanılır.
 
+Sorun giderme: yönetici olarak Hesabım → "El yazısı çevirme" bölümünde "Sunucu durumu" satırı hangi ayarın eksik
+olduğunu (sadece adını) gösterir. Servis hazır değilse normal kullanıcılar Aa düğmelerini hiç görmez.
+Vercel'de değişken eklemek/değiştirmek ancak YENİ bir yayında (deploy) geçerli olur; "Production" ortamı işaretli olmalı.
+
 Gizlilik: Gemini ücretsiz katmanında gönderilen içerik Google tarafından ürün geliştirmede kullanılabilir.
 Apple Scribble Türkçeyi desteklemez, bu yüzden kullanılmıyor.
 
