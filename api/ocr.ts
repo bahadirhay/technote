@@ -140,20 +140,51 @@ const providers = (): Provider[] => {
   const g = env('GEMINI_API_KEY')
   if (g) list.push({ name: 'gemini', run: (img) => readWithGemini(img, g) })
   const [ak, ab, am] = [env('OCR_ALT_API_KEY'), env('OCR_ALT_BASE_URL'), env('OCR_ALT_MODEL')]
-  if (ak && ab && am) list.push({ name: 'yedek', run: (img) => readWithAlt(img, ak, ab, am) })
+  if (ak && ab && am) {
+    // OCR_ALT_MODEL virgülle birden çok model alabilir; "model yok" diyen atlanır, sıradaki denenir
+    const models = am.split(',').map((m) => m.trim()).filter(Boolean)
+    list.push({
+      name: 'yedek',
+      run: async (img) => {
+        let last: unknown
+        for (const m of models) {
+          try {
+            return await readWithAlt(img, ak, ab, m)
+          } catch (e) {
+            last = e
+            if (!(e instanceof OcrError) || (e.upstream !== 404 && e.upstream !== 400)) throw e
+          }
+        }
+        throw last
+      },
+    })
+  }
   const c = env('ANTHROPIC_API_KEY')
   if (c) list.push({ name: 'claude', run: (img) => readWithClaude(img, c) })
   return list
 }
 
 // Durum kontrolü: hangi ayar eksik? (sadece ayar ADLARI döner, değerler asla)
+async function altModelList(): Promise<string[] | null> {
+  const [ak, ab] = [env('OCR_ALT_API_KEY'), env('OCR_ALT_BASE_URL')]
+  if (!ak || !ab) return null
+  try {
+    const r = await fetch(`${ab.replace(/\/+$/, '')}/models`, { headers: { Authorization: `Bearer ${ak}` } })
+    if (!r.ok) return [`HTTP ${r.status}`]
+    const d = (await r.json()) as { data?: { id?: string }[] }
+    return (d.data ?? []).map((m) => m.id ?? '').filter(Boolean).slice(0, 60)
+  } catch {
+    return null
+  }
+}
+
 export async function GET(): Promise<Response> {
   const missing: string[] = []
   const names = providers().map((p) => p.name)
   if (!names.length) missing.push('GEMINI_API_KEY')
   if (!env('VITE_SUPABASE_URL')) missing.push('VITE_SUPABASE_URL')
   if (!env('VITE_SUPABASE_ANON_KEY')) missing.push('VITE_SUPABASE_ANON_KEY')
-  return new Response(JSON.stringify({ ready: missing.length === 0, provider: names.join(' → ') || null, altModel: env('OCR_ALT_MODEL') ?? null, altHost: (() => { try { return new URL(env('OCR_ALT_BASE_URL') ?? '').host } catch { return null } })(), missing }), {
+  return new Response(JSON.stringify({ ready: missing.length === 0, provider: names.join(' → ') || null, altModel: env('OCR_ALT_MODEL') ?? null, altModels: await altModelList(), altHost: (() => { try { return new URL(env('OCR_ALT_BASE_URL') ?? '').host } catch { return null } })(), missing }), {
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   })
 }

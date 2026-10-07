@@ -163,6 +163,9 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
                 Sunucu durumu (sadece yöneticiye görünür):{' '}
                 {srv === null ? 'kontrol ediliyor…' : srv.ready ? `✓ hazır (${srv.provider}) · yedek model: ${srv.altModel ?? 'yok'} · adres: ${srv.altHost ?? 'yok'}` : `✗ eksik: ${srv.missing.join(', ')}`}
               </p>
+              {srv?.altModels && (
+                <p className="muted" style={{ wordBreak: 'break-all' }}>Yedek serviste kullanılabilir modeller: {srv.altModels.join(', ')}</p>
+              )}
               <button
                 disabled={ocrBusy}
                 onClick={async () => {

@@ -27,6 +27,7 @@ export interface OcrStatus {
   provider?: 'gemini' | 'claude' | null
   altModel?: string | null
   altHost?: string | null
+  altModels?: string[] | null
   missing: string[]
 }
 
