@@ -81,7 +81,7 @@ async function readWithAlt(image: string, key: string, base: string, model: stri
     body: JSON.stringify({
       model,
       temperature: 0,
-      max_tokens: 1000,
+      max_tokens: 3000,
       messages: [
         { role: 'system', content: SYSTEM },
         { role: 'user', content: [{ type: 'text', text: USER }, { type: 'image_url', image_url: { url: `data:image/png;base64,${image}` } }] },
@@ -98,7 +98,7 @@ async function readWithAlt(image: string, key: string, base: string, model: stri
   }
   const data = (await res.json()) as { choices?: { message?: { content?: string | { text?: string }[] } }[] }
   const c = data.choices?.[0]?.message?.content
-  return (typeof c === 'string' ? c : (c ?? []).map((p) => p.text ?? '').join('\n')).trim()
+  return (typeof c === 'string' ? c : (c ?? []).map((p) => p.text ?? '').join('\n')).replace(/<think>[\s\S]*?<\/think>/g, '').trim()
 }
 
 async function readWithClaude(image: string, apiKey: string): Promise<string> {
@@ -143,6 +143,8 @@ const providers = (): Provider[] => {
   if (ak && ab && am) {
     // OCR_ALT_MODEL virgülle birden çok model alabilir; "model yok" diyen atlanır, sıradaki denenir
     const models = am.split(',').map((m) => m.trim()).filter(Boolean)
+    // Groq'ta kapatılan modele karşı: güncel görüntü modelleri sona eklenir (Haziran 2026 araştırması)
+    if (/groq\.com/.test(ab)) for (const m of ['qwen/qwen3.8-27b', 'qwen/qwen3.6-27b']) if (!models.includes(m)) models.push(m)
     list.push({
       name: 'yedek',
       run: async (img) => {
