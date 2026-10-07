@@ -45,7 +45,10 @@ olduğunu (sadece adını) gösterir. Servis hazır değilse normal kullanıcıl
 Vercel'de değişken eklemek/değiştirmek ancak YENİ bir yayında (deploy) geçerli olur; "Production" ortamı işaretli olmalı.
 
 Gizlilik: Gemini ücretsiz katmanında gönderilen içerik Google tarafından ürün geliştirmede kullanılabilir.
-Apple Scribble Türkçeyi desteklemez, bu yüzden kullanılmıyor.
+Cihazda çalışan alternatif: Apple Scribble. Apple'ın özellik sayfasına göre Türkçe iPadOS 27 ile eklendi.
+Yazı kutusuna (T Yazı) Apple Pencil ile yazınca iPad el yazısını cihaz içinde yazıya çevirir; sunucu ve kota gerekmez.
+Hesabım'daki "Kalemle yazma testi" ile denenebilir. Scribble sadece yazı alanlarında çalışır; çizilmiş mevcut
+çizgileri çevirmez (onun için yukarıdaki sunucu servisi gerekir).
 
 Kullanım:
 - "Seç / taşı" ile el yazısını çevrele → "Aa Yazıya çevir"

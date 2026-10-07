@@ -102,6 +102,21 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
         </section>
 
         <section>
+          <h2>Kalemle yazma testi (Scribble)</h2>
+          <p className="muted">
+            Apple Pencil ile aşağıdaki kutuya yaz: iPad el yazını cihaz içinde, internetsiz ve ücretsiz yazıya çevirir.
+            Türkçe karakterleri dene: ş ğ ı ö ü ç İ. Çalışmazsa: Ayarlar → Apple Pencil → Scribble açık olsun ve
+            iPad'in iPadOS 27 veya üstünde olsun.
+          </p>
+          <textarea
+            className="scribble-test"
+            lang="tr"
+            rows={3}
+            placeholder="Kalemle buraya yaz…"
+          />
+        </section>
+
+        <section>
           <h2>El yazısı çevirme</h2>
           <label className="check">
             <input

@@ -80,3 +80,5 @@ button.link { border: 0; background: none; color: #1d4ed8; min-height: 32px; }
 .results .snip { color: #64748b; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pad { padding: 12px 14px; }
 .pager { overflow-x: auto; }
+
+.scribble-test { width: 100%; border: 2px dashed #94a3b8; border-radius: 10px; padding: 12px; font: 22px/1.4 system-ui, sans-serif; resize: vertical; background: #fff; }

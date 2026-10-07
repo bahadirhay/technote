@@ -578,6 +578,8 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
                   value={t.text}
                   rows={Math.max(1, t.text.split('\n').length)}
                   style={{ fontFamily: t.font, fontSize: t.size, color: t.color, lineHeight: lineH ? `${lineH}px` : 1.3 }}
+                  lang="tr"
+                  placeholder="Klavyeyle yaz ya da Apple Pencil ile buraya yaz (Scribble)"
                   onFocus={() => setActiveText(t.id)}
                   onChange={(e) => editText(t.id, { text: e.target.value })}
                 />
