@@ -25,6 +25,7 @@ import {
   type Background,
   type ImageBox,
   type Scene,
+  type Stroke,
   type Selection,
   type ShapeKind,
   type Sticky,
@@ -576,6 +577,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
 
   // Seçili el yazısını Claude ile okutup yazı kutusuna çevirir
   const convertStrokes = async (indices: number[], auto = false) => {
+    const pageId = page.id
     const picked = indices.map((i) => page.strokes[i]).filter((s) => s && s.tool === 'pen')
     const png = strokesToPng(picked)
     if (!png) return auto ? undefined : alert('Önce çevirmek istediğin el yazısını "Seç / taşı" ile çevreleyerek seç.')
@@ -611,8 +613,19 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
       void sendSample(picked, text).then((sid) => {
         if (sid) sampleIds.current.set(box.id, sid)
       })
-      const drop = new Set(indices.filter((i) => page.strokes[i]?.tool === 'pen'))
-      patch({ strokes: page.strokes.filter((_, i) => !drop.has(i)), texts: [...page.texts.filter((t) => t.text.trim()), box] })
+      // Çevirme sürerken yazılan yeni çizgiler kaybolmasın: güncel deftere göre, çizgileri kimliğiyle ayıkla
+      const pickedSet = new Set<Stroke>(picked)
+      const base = nbRef.current
+      if (!base.pages.some((p) => p.id === pageId)) return
+      undo.current.push(base.pages)
+      if (undo.current.length > 50) undo.current.shift()
+      redo.current = []
+      onChange({
+        ...base,
+        pages: base.pages.map((p) =>
+          p.id === pageId ? { ...p, strokes: p.strokes.filter((st) => !pickedSet.has(st)), texts: [...p.texts.filter((t) => t.text.trim()), box] } : p,
+        ),
+      })
       if (!auto) {
         setSelection(EMPTY_SEL)
         setTool('text')
@@ -848,7 +861,9 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
               <div
                 key={t.id}
                 className="tbox"
-                style={{ left: t.x, top: t.y, width: t.w, pointerEvents: tool === 'text' ? 'auto' : 'none' }}
+                style={{ left: t.x, top: t.y, width: t.w, pointerEvents: tool === 'text' || tool === 'eraser' ? 'auto' : 'none' }}
+                onPointerDown={() => tool === 'eraser' && removeText(t.id)}
+                onPointerEnter={(e) => tool === 'eraser' && e.buttons > 0 && removeText(t.id)}
               >
                 <textarea
                   autoFocus={!t.text}
