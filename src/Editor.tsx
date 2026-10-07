@@ -595,7 +595,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
       const x0 = Math.min(...rects.map((p) => p[0])), y0 = Math.min(...rects.map((p) => p[1]))
       const x1 = Math.max(...rects.map((p) => p[0]))
       const nLines = text.split('\n').length
-      const size = lineH >= 40 ? Math.round(lineH * 0.55) : Math.min(40, Math.max(18, Math.round((png.h / nLines) * 0.45)))
+      const size = lineH ? Math.min(40, Math.max(14, Math.round(lineH * 0.6))) : Math.min(40, Math.max(18, Math.round((png.h / nLines) * 0.45)))
       const left = Math.min(Math.max(8, x0), PAGE_W - 140)
       // Çizgili/kareli sayfada ilk satırın tabanı en yakın çizgiye otursun
       let top = y0
