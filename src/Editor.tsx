@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PageCanvas from './PageCanvas'
-import { supabase } from './cloud'
+import { readHandwriting } from './ocr'
 import { deleteSelection } from './geometry'
 import { strokesToPng } from './ink'
 import { renderPdfPage, openPdf } from './pdf'
@@ -296,25 +296,12 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
     if (!png) return alert('Önce çevirmek istediğin el yazısını "Seç / taşı" ile çevreleyerek seç.')
     setOcrBusy(true)
     try {
-      const { data } = await supabase.auth.getSession()
-      const res = await fetch('/api/ocr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token ?? ''}` },
-        body: JSON.stringify({ image: png.b64 }),
-      })
-      const body = (await res.json().catch(() => ({}))) as { text?: string; error?: string }
-      if (!res.ok) {
-        const msg: Record<string, string> = {
-          not_configured: 'El yazısı çevirme henüz kurulmadı (sunucuda anahtar eksik).',
-          unauthorized: 'Oturumun süresi dolmuş, çıkış yapıp tekrar gir.',
-          forbidden: 'Bu özellik için hesabının onaylı olması gerekir.',
-          rate_limited: 'Çok sık denendi, biraz bekleyip tekrar dene.',
-          daily_limit: 'Bugünlük el yazısı çevirme hakkın doldu, yarın tekrar dene.',
-          refused: 'Bu yazı çevrilemedi.',
-        }
-        return alert(msg[body.error ?? ''] ?? (res.status === 404 ? 'El yazısı çevirme bu sürümde henüz sunucuda yok.' : 'El yazısı çevrilemedi, tekrar dene.'))
+      let text = ''
+      try {
+        text = await readHandwriting(png.b64)
+      } catch (e) {
+        return alert((e as Error).message)
       }
-      const text = (body.text ?? '').trim()
       if (!text || text === '[okunamadı]') return alert('Yazı okunamadı. Daha net veya daha büyük yazmayı dene.')
       const rects = picked.flatMap((s) => s.points)
       const x0 = Math.min(...rects.map((p) => p[0])), y0 = Math.min(...rects.map((p) => p[1]))

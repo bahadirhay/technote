@@ -21,32 +21,49 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
 class OcrError extends Error {
-  constructor(public code: string, public status: number) {
+  constructor(public code: string, public status: number, public upstream?: number, public detail?: string) {
     super(code)
   }
 }
 
+// Model adı geçersiz/eskimişse (404) sıradaki yedek denenir
+const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
+
 async function readWithGemini(image: string, apiKey: string): Promise<string> {
   const base = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com'
-  const model = process.env.GEMINI_MODEL || 'gemini-flash-latest'
-  const res = await fetch(`${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM }] },
-      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/png', data: image } }, { text: USER }] }],
-      generationConfig: { temperature: 0 },
-    }),
-  })
-  if (res.status === 429) throw new OcrError('rate_limited', 429)
-  if (res.status === 400 || res.status === 401 || res.status === 403) throw new OcrError('not_configured', 503)
-  if (!res.ok) throw new OcrError('upstream', 502)
-  const data = (await res.json()) as {
-    promptFeedback?: { blockReason?: string }
-    candidates?: { content?: { parts?: { text?: string }[] } }[]
+  const models = process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : GEMINI_MODELS
+  let last: OcrError = new OcrError('upstream', 502)
+  for (const model of models) {
+    const res = await fetch(`${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/png', data: image } }, { text: USER }] }],
+        generationConfig: { temperature: 0 },
+      }),
+    })
+    if (res.ok) {
+      const data = (await res.json()) as {
+        promptFeedback?: { blockReason?: string }
+        candidates?: { content?: { parts?: { text?: string }[] } }[]
+      }
+      if (data.promptFeedback?.blockReason) throw new OcrError('refused', 422)
+      return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('\n').trim()
+    }
+    // Google'ın hata mesajı (anahtar içermez) teşhis için iletilir
+    const err = (await res.json().catch(() => ({}))) as { error?: { message?: string; status?: string } }
+    const detail = `${model}: ${err.error?.message ?? err.error?.status ?? ''}`.slice(0, 240)
+    if (res.status === 404) {
+      last = new OcrError('upstream', 502, 404, detail)
+      continue
+    }
+    if (res.status === 429) throw new OcrError('rate_limited', 429, 429, detail)
+    if (res.status === 400 && /API key/i.test(err.error?.message ?? '')) throw new OcrError('not_configured', 503, 400, detail)
+    if (res.status === 401 || res.status === 403) throw new OcrError('not_configured', 503, res.status, detail)
+    throw new OcrError('upstream', 502, res.status, detail)
   }
-  if (data.promptFeedback?.blockReason) throw new OcrError('refused', 422)
-  return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('\n').trim()
+  throw last
 }
 
 async function readWithClaude(image: string, apiKey: string): Promise<string> {
@@ -118,7 +135,7 @@ export async function POST(request: Request): Promise<Response> {
     const text = geminiKey ? await readWithGemini(image, geminiKey) : await readWithClaude(image, claudeKey!)
     return json({ text })
   } catch (e) {
-    if (e instanceof OcrError) return json({ error: e.code }, e.status)
+    if (e instanceof OcrError) return json({ error: e.code, status: e.upstream, detail: e.detail }, e.status)
     return json({ error: 'server' }, 500)
   }
 }

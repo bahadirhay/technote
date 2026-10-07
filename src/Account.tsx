@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { selfTest } from './ocr'
 import { supabase, updateDisplayName, updatePassword, type Profile } from './cloud'
 
 export function NewPassword({ onDone }: { onDone: () => void }) {
@@ -36,6 +37,8 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
   const [pw2, setPw2] = useState('')
   const [nameMsg, setNameMsg] = useState('')
   const [pwMsg, setPwMsg] = useState('')
+  const [ocrMsg, setOcrMsg] = useState('')
+  const [ocrBusy, setOcrBusy] = useState(false)
 
   const saveName = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -90,6 +93,28 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
             <button className="on">Şifreyi değiştir</button>
           </form>
           {pwMsg && <p className={pwMsg.endsWith('.') && !pwMsg.includes('değil') ? 'muted' : 'err'}>{pwMsg}</p>}
+        </section>
+
+        <section>
+          <h2>El yazısı çevirme</h2>
+          <button
+            disabled={ocrBusy}
+            onClick={async () => {
+              setOcrBusy(true)
+              setOcrMsg('Deneniyor…')
+              try {
+                const t = await selfTest()
+                setOcrMsg(t ? `✓ Çalışıyor. Okunan: "${t}"` : 'Servis cevap verdi ama yazı okunamadı.')
+              } catch (e) {
+                setOcrMsg(`✗ ${(e as Error).message}`)
+              } finally {
+                setOcrBusy(false)
+              }
+            }}
+          >
+            Servisi test et
+          </button>
+          {ocrMsg && <p className="muted">{ocrMsg}</p>}
         </section>
 
         <section>
