@@ -1,19 +1,25 @@
-import { useCallback, useEffect, useRef } from 'react'
-import { BG_LINES, PAGE_H, PAGE_W, type Background, type ImageBox, type Page, type Pt, type Stroke, type Tool } from './types'
+import { useEffect, useRef } from 'react'
+import { applyMove, applyResize, handleOf, hitScene, lassoSelect, selFromHit, selRect, shapeRect } from './geometry'
+import {
+  BG_LINES, EMPTY_SEL, PAGE_H, PAGE_W, isEmptySel, uid,
+  type Background, type Page, type Pt, type Scene, type Selection, type Shape, type ShapeKind, type Stroke, type Tool,
+} from './types'
 
 interface Props {
   page: Page
   tool: Tool
   color: string
   width: number
+  shapeKind: ShapeKind
+  shapeFill: boolean
   bgImage?: HTMLCanvasElement | null
   imgs: Map<string, HTMLImageElement>
-  selectedId: string | null
+  selection: Selection
   smooth: boolean
-  onStrokes: (strokes: Stroke[]) => void
-  onImages: (images: ImageBox[]) => void
-  onSelect: (id: string | null) => void
+  onScene: (scene: Scene) => void
+  onSelect: (sel: Selection) => void
   onPlaceText: (x: number, y: number) => void
+  onPlaceNote: (x: number, y: number) => void
   scrollRef: React.RefObject<HTMLDivElement | null>
   fingerDraw: boolean
 }
@@ -102,64 +108,133 @@ const drawStroke = (ctx: CanvasRenderingContext2D, s: Stroke, smooth: boolean) =
   ctx.restore()
 }
 
-type Drag = { id: string; mode: 'move' | 'resize'; dx: number; dy: number; ratio: number }
+const drawShape = (ctx: CanvasRenderingContext2D, s: Shape) => {
+  const r = shapeRect(s)
+  ctx.save()
+  ctx.strokeStyle = s.color
+  ctx.fillStyle = s.color
+  ctx.lineWidth = s.width
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  if (s.kind === 'rect') ctx.rect(r.x, r.y, r.w, r.h)
+  else if (s.kind === 'ellipse') ctx.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2)
+  else if (s.kind === 'triangle') {
+    ctx.moveTo(r.x + r.w / 2, r.y)
+    ctx.lineTo(r.x + r.w, r.y + r.h)
+    ctx.lineTo(r.x, r.y + r.h)
+    ctx.closePath()
+  } else {
+    ctx.moveTo(s.x1, s.y1)
+    ctx.lineTo(s.x2, s.y2)
+    if (s.kind === 'arrow') {
+      const a = Math.atan2(s.y2 - s.y1, s.x2 - s.x1)
+      const len = 14 + s.width * 2.5
+      for (const d of [-0.5, 0.5]) {
+        ctx.moveTo(s.x2, s.y2)
+        ctx.lineTo(s.x2 - len * Math.cos(a + d), s.y2 - len * Math.sin(a + d))
+      }
+    }
+  }
+  if (s.fill && s.kind !== 'line' && s.kind !== 'arrow') {
+    ctx.globalAlpha = 0.18
+    ctx.fill()
+    ctx.globalAlpha = 1
+  }
+  ctx.stroke()
+  ctx.restore()
+}
+
+type Drag =
+  | { mode: 'move'; sx: number; sy: number; base: Scene; sel: Selection }
+  | { mode: 'resize'; base: Scene; sel: Selection }
 
 export default function PageCanvas({
-  page, tool, color, width, bgImage, imgs, selectedId, smooth,
-  onStrokes, onImages, onSelect, onPlaceText, scrollRef, fingerDraw,
+  page, tool, color, width, shapeKind, shapeFill, bgImage, imgs, selection, smooth,
+  onScene, onSelect, onPlaceText, onPlaceNote, scrollRef, fingerDraw,
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
   const live = useRef<Stroke | null>(null)
+  const liveShape = useRef<Shape | null>(null)
+  const lasso = useRef<Pt[] | null>(null)
   const erasing = useRef<Stroke[] | null>(null)
   const touches = useRef(new Map<number, number>())
   const tap = useRef<{ x: number; y: number; ok: boolean } | null>(null)
   const drag = useRef<Drag | null>(null)
-  const draft = useRef<ImageBox[] | null>(null)
-  // Dokunma ile doğrudan çizim/taşıma (parmak çizim modu ya da resim seçme)
+  const draft = useRef<Scene | null>(null)
+  // Dokunma ile doğrudan çizim/taşıma (parmak çizim modu ya da seçme aracı)
   const direct = fingerDraw || tool === 'select'
 
-  const redraw = useCallback(
-    (strokes: Stroke[], extra?: Stroke | null, images: ImageBox[] = page.images ?? []) => {
-      const c = ref.current
-      if (!c) return
-      const ctx = c.getContext('2d')!
-      const dpr = window.devicePixelRatio || 1
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      if (bgImage) {
-        ctx.fillStyle = '#fff'
-        ctx.fillRect(0, 0, PAGE_W, PAGE_H)
-        ctx.drawImage(bgImage, 0, 0, PAGE_W, PAGE_H)
-      } else drawBg(ctx, page.bg)
-      for (const im of images) {
-        const el = imgs.get(im.docId)
-        if (el) ctx.drawImage(el, im.x, im.y, im.w, im.h)
-        else {
-          ctx.fillStyle = '#e2e8f0'
-          ctx.fillRect(im.x, im.y, im.w, im.h)
+  const pageScene = (): Scene => ({
+    strokes: page.strokes,
+    shapes: page.shapes ?? [],
+    images: page.images ?? [],
+    notes: page.notes ?? [],
+  })
+
+  const draw = (sc: Scene = draft.current ?? pageScene(), extra?: { stroke?: Stroke | null }) => {
+    const c = ref.current
+    if (!c) return
+    const ctx = c.getContext('2d')!
+    const dpr = window.devicePixelRatio || 1
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    if (bgImage) {
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, PAGE_W, PAGE_H)
+      ctx.drawImage(bgImage, 0, 0, PAGE_W, PAGE_H)
+    } else drawBg(ctx, page.bg)
+    for (const im of sc.images) {
+      const el = imgs.get(im.docId)
+      if (el) ctx.drawImage(el, im.x, im.y, im.w, im.h)
+      else {
+        ctx.fillStyle = '#e2e8f0'
+        ctx.fillRect(im.x, im.y, im.w, im.h)
+      }
+    }
+    for (const n of sc.notes) {
+      ctx.save()
+      ctx.shadowColor = 'rgba(0,0,0,.25)'
+      ctx.shadowBlur = 8
+      ctx.shadowOffsetY = 3
+      ctx.fillStyle = n.color
+      ctx.fillRect(n.x, n.y, n.w, n.h)
+      ctx.restore()
+    }
+    for (const s of sc.shapes) drawShape(ctx, s)
+    if (liveShape.current) drawShape(ctx, liveShape.current)
+    for (const s of sc.strokes) drawStroke(ctx, s, smooth)
+    if (extra?.stroke) drawStroke(ctx, extra.stroke, smooth)
+    if (tool === 'select') {
+      ctx.save()
+      ctx.strokeStyle = '#1d4ed8'
+      ctx.lineWidth = 2
+      ctx.setLineDash([8, 6])
+      const r = selRect(sc, selection)
+      if (r) {
+        ctx.strokeRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8)
+        const h = handleOf(sc, selection)
+        if (h) {
+          ctx.setLineDash([])
+          ctx.fillStyle = '#1d4ed8'
+          ctx.beginPath()
+          ctx.arc(h[0], h[1], HANDLE / 2, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.strokeStyle = '#fff'
+          ctx.lineWidth = 3
+          ctx.stroke()
         }
       }
-      for (const s of strokes) drawStroke(ctx, s, smooth)
-      if (extra) drawStroke(ctx, extra, smooth)
-      const sel = tool === 'select' && images.find((i) => i.id === selectedId)
-      if (sel) {
-        ctx.save()
+      if (lasso.current && lasso.current.length > 1) {
+        ctx.setLineDash([6, 5])
         ctx.strokeStyle = '#1d4ed8'
-        ctx.lineWidth = 2
-        ctx.setLineDash([8, 6])
-        ctx.strokeRect(sel.x, sel.y, sel.w, sel.h)
-        ctx.setLineDash([])
-        ctx.fillStyle = '#1d4ed8'
         ctx.beginPath()
-        ctx.arc(sel.x + sel.w, sel.y + sel.h, HANDLE / 2, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = '#fff'
-        ctx.lineWidth = 3
+        ctx.moveTo(lasso.current[0][0], lasso.current[0][1])
+        for (const p of lasso.current) ctx.lineTo(p[0], p[1])
         ctx.stroke()
-        ctx.restore()
       }
-    },
-    [page.bg, page.images, bgImage, imgs, selectedId, tool, smooth],
-  )
+      ctx.restore()
+    }
+  }
 
   useEffect(() => {
     const c = ref.current!
@@ -168,8 +243,8 @@ export default function PageCanvas({
       c.width = PAGE_W * dpr
       c.height = PAGE_H * dpr
     }
-    redraw(page.strokes)
-  }, [page.strokes, redraw])
+    draw()
+  })
 
   const pos = (e: React.PointerEvent): Pt => {
     const r = ref.current!.getBoundingClientRect()
@@ -184,45 +259,48 @@ export default function PageCanvas({
     const next = base.filter((s) => !s.points.some((p) => Math.hypot(p[0] - x, p[1] - y) < r))
     if (next.length !== base.length) {
       erasing.current = next
-      redraw(next)
+      draw({ ...pageScene(), strokes: next })
     }
   }
 
   const selectDown = (x: number, y: number) => {
-    const list = page.images ?? []
-    const sel = list.find((i) => i.id === selectedId)
-    if (sel && Math.hypot(sel.x + sel.w - x, sel.y + sel.h - y) < HANDLE * 1.6) {
-      drag.current = { id: sel.id, mode: 'resize', dx: 0, dy: 0, ratio: sel.w / sel.h }
-      draft.current = list
-      return
-    }
-    for (let i = list.length - 1; i >= 0; i--) {
-      const im = list[i]
-      if (x >= im.x && x <= im.x + im.w && y >= im.y && y <= im.y + im.h) {
-        onSelect(im.id)
-        drag.current = { id: im.id, mode: 'move', dx: x - im.x, dy: y - im.y, ratio: im.w / im.h }
-        draft.current = list
+    const sc = pageScene()
+    if (!isEmptySel(selection)) {
+      const h = handleOf(sc, selection)
+      if (h && Math.hypot(h[0] - x, h[1] - y) < HANDLE * 1.6) {
+        drag.current = { mode: 'resize', base: sc, sel: selection }
+        draft.current = sc
+        return
+      }
+      const r = selRect(sc, selection)
+      if (r && x >= r.x - 6 && x <= r.x + r.w + 6 && y >= r.y - 6 && y <= r.y + r.h + 6) {
+        drag.current = { mode: 'move', sx: x, sy: y, base: sc, sel: selection }
+        draft.current = sc
         return
       }
     }
-    onSelect(null)
+    const hit = hitScene(sc, x, y)
+    if (hit) {
+      const sel = selFromHit(hit)
+      onSelect(sel)
+      drag.current = { mode: 'move', sx: x, sy: y, base: sc, sel }
+      draft.current = sc
+      return
+    }
+    onSelect(EMPTY_SEL)
+    lasso.current = [[x, y, 0]]
   }
 
   const selectMove = (x: number, y: number) => {
     const d = drag.current
-    if (!d || !draft.current) return
-    draft.current = draft.current.map((im) => {
-      if (im.id !== d.id) return im
-      if (d.mode === 'move') return { ...im, x: x - d.dx, y: y - d.dy }
-      const w = Math.max(40, x - im.x)
-      return { ...im, w, h: w / d.ratio }
-    })
-    redraw(page.strokes, null, draft.current)
+    if (d) {
+      draft.current = d.mode === 'move' ? applyMove(d.base, d.sel, x - d.sx, y - d.sy) : applyResize(d.base, d.sel, x, y)
+    } else if (lasso.current) lasso.current.push([x, y, 0])
   }
 
   const down = (e: React.PointerEvent) => {
-    // Yazı aracı: dokunuş bırakılınca (up) kutu açılır; kaydırma ile karışmasın
-    if (tool === 'text') {
+    // Yazı/not aracı: dokunuş bırakılınca (up) kutu açılır; kaydırma ile karışmasın
+    if (tool === 'text' || tool === 'note') {
       tap.current = { x: e.clientX, y: e.clientY, ok: true }
       if (e.pointerType === 'touch') touches.current.set(e.pointerId, e.clientY)
       if (touches.current.size >= 2) tap.current.ok = false
@@ -233,11 +311,13 @@ export default function PageCanvas({
       // 2 parmak: çizimi iptal et, kaydırma moduna geç
       if (touches.current.size >= 2) {
         live.current = null
+        liveShape.current = null
+        lasso.current = null
         drag.current = null
         draft.current = null
       }
       if (!direct || touches.current.size >= 2) {
-        redraw(page.strokes)
+        draw()
         return
       }
     }
@@ -245,12 +325,16 @@ export default function PageCanvas({
     const p = pos(e)
     if (tool === 'select') return selectDown(p[0], p[1])
     if (tool === 'eraser') return eraseAt(p[0], p[1])
+    if (tool === 'shape') {
+      liveShape.current = { id: uid(), kind: shapeKind, x1: p[0], y1: p[1], x2: p[0], y2: p[1], color, width, fill: shapeFill }
+      return
+    }
     live.current = { tool, color, width, points: [p] }
-    redraw(page.strokes, live.current)
+    draw(undefined, { stroke: live.current })
   }
 
   const move = (e: React.PointerEvent) => {
-    if (tool === 'text') {
+    if (tool === 'text' || tool === 'note') {
       const t = tap.current
       if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) > 10) t.ok = false
       const last = touches.current.get(e.pointerId)
@@ -274,38 +358,53 @@ export default function PageCanvas({
       const x = ((ev.clientX - r.left) / r.width) * PAGE_W
       const y = ((ev.clientY - r.top) / r.height) * PAGE_H
       if (tool === 'select') selectMove(x, y)
-      else if (erasing.current || tool === 'eraser') {
+      else if (liveShape.current) {
+        liveShape.current.x2 = x
+        liveShape.current.y2 = y
+      } else if (erasing.current || tool === 'eraser') {
         if (e.buttons) eraseAt(x, y)
       } else if (live.current) {
         const pr = ev.pointerType === 'pen' && ev.pressure > 0 ? ev.pressure : 0.5
         live.current.points.push([x, y, pr])
       }
     }
-    if (live.current) redraw(page.strokes, live.current)
+    if (live.current) draw(undefined, { stroke: live.current })
+    else if (liveShape.current || (tool === 'select' && (drag.current || lasso.current))) draw()
   }
 
   const up = (e: React.PointerEvent) => {
-    if (tool === 'text') {
+    if (tool === 'text' || tool === 'note') {
       touches.current.delete(e.pointerId)
       const t = tap.current
       tap.current = null
       if (t?.ok && touches.current.size === 0) {
         const p = pos(e)
-        onPlaceText(p[0], p[1])
+        if (tool === 'text') onPlaceText(p[0], p[1])
+        else onPlaceNote(p[0], p[1])
       }
       return
     }
     if (e.pointerType === 'touch') touches.current.delete(e.pointerId)
     if (drag.current && draft.current) {
-      onImages(draft.current)
+      onScene(draft.current)
       drag.current = null
       draft.current = null
     }
+    if (lasso.current) {
+      onSelect(lassoSelect(pageScene(), lasso.current))
+      lasso.current = null
+    }
+    if (liveShape.current) {
+      const s = liveShape.current
+      liveShape.current = null
+      if (Math.hypot(s.x2 - s.x1, s.y2 - s.y1) > 8) onScene({ ...pageScene(), shapes: [...(page.shapes ?? []), s] })
+      else draw()
+    }
     if (live.current) {
-      onStrokes([...page.strokes, live.current])
+      onScene({ ...pageScene(), strokes: [...page.strokes, live.current] })
       live.current = null
     } else if (erasing.current) {
-      onStrokes(erasing.current)
+      onScene({ ...pageScene(), strokes: erasing.current })
       erasing.current = null
     }
   }

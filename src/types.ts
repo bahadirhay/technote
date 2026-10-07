@@ -1,6 +1,6 @@
 export type Pt = [number, number, number]
 
-export type Tool = 'pen' | 'highlighter' | 'eraser' | 'text' | 'select'
+export type Tool = 'pen' | 'highlighter' | 'eraser' | 'text' | 'select' | 'shape' | 'note'
 
 export interface Stroke {
   tool: 'pen' | 'highlighter'
@@ -38,6 +38,55 @@ export const BG_LINES: Partial<Record<Background, { first: number; step: number 
   cornell: { first: 100, step: 34 },
 }
 
+export type ShapeKind = 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow'
+
+export const SHAPE_NAMES: Record<ShapeKind, string> = {
+  rect: '▭ Dikdörtgen',
+  ellipse: '◯ Elips',
+  triangle: '△ Üçgen',
+  line: '／ Çizgi',
+  arrow: '→ Ok',
+}
+
+export interface Shape {
+  id: string
+  kind: ShapeKind
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  color: string
+  width: number
+  fill: boolean
+}
+
+export interface Sticky {
+  id: string
+  x: number
+  y: number
+  w: number
+  h: number
+  text: string
+  color: string
+}
+
+export interface Scene {
+  strokes: Stroke[]
+  shapes: Shape[]
+  images: ImageBox[]
+  notes: Sticky[]
+}
+
+export interface Selection {
+  strokes: number[]
+  shapes: string[]
+  images: string[]
+  notes: string[]
+}
+
+export const EMPTY_SEL: Selection = { strokes: [], shapes: [], images: [], notes: [] }
+export const isEmptySel = (s: Selection) => !(s.strokes.length || s.shapes.length || s.images.length || s.notes.length)
+
 export interface ImageBox {
   id: string
   docId: string
@@ -53,6 +102,8 @@ export interface Page {
   strokes: Stroke[]
   texts: TextBox[]
   images?: ImageBox[]
+  shapes?: Shape[]
+  notes?: Sticky[]
   pdf?: { docId: string; pageNum: number }
 }
 

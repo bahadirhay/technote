@@ -1,28 +1,37 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PageCanvas from './PageCanvas'
+import { deleteSelection } from './geometry'
 import { renderPdfPage, openPdf } from './pdf'
 import { loadImage, saveImage, savePdf } from './store'
 import {
   BG_LINES,
   BG_NAMES,
+  EMPTY_SEL,
+  SHAPE_NAMES,
+  isEmptySel,
   PAGE_H,
   PAGE_W,
   newPage,
   uid,
   type Background,
   type ImageBox,
+  type Scene,
+  type Selection,
+  type ShapeKind,
+  type Sticky,
   type Notebook,
   type Page,
-  type Stroke,
   type TextBox,
   type Tool,
 } from './types'
 
 const COLORS = ['#111827', '#1d4ed8', '#dc2626', '#16a34a', '#d97706', '#9333ea']
+const NOTE_COLORS = ['#fde68a', '#bbf7d0', '#fbcfe8', '#bfdbfe', '#fed7aa', '#e9d5ff']
 const HL_COLORS = ['#facc15', '#4ade80', '#f472b6', '#38bdf8', '#fb923c', '#a78bfa']
 const COLOR_NAMES: Record<string, string> = {
   '#111827': 'Siyah', '#1d4ed8': 'Mavi', '#dc2626': 'Kırmızı', '#16a34a': 'Yeşil', '#d97706': 'Turuncu', '#9333ea': 'Mor',
   '#facc15': 'Sarı', '#4ade80': 'Açık yeşil', '#f472b6': 'Pembe', '#38bdf8': 'Açık mavi', '#fb923c': 'Turuncu', '#a78bfa': 'Açık mor',
+  '#fde68a': 'Sarı not', '#bbf7d0': 'Yeşil not', '#fbcfe8': 'Pembe not', '#bfdbfe': 'Mavi not', '#fed7aa': 'Turuncu not', '#e9d5ff': 'Mor not',
 }
 const FONTS = ['system-ui', 'Georgia', 'Courier New', 'Comic Sans MS', 'Marker Felt', 'Bradley Hand', 'Snell Roundhand']
 
@@ -44,7 +53,10 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   const [bgImage, setBgImage] = useState<HTMLCanvasElement | null>(null)
   const [scale, setScale] = useState(1)
   const [busy, setBusy] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selection, setSelection] = useState<Selection>(EMPTY_SEL)
+  const [shapeKind, setShapeKind] = useState<ShapeKind>('rect')
+  const [shapeFill, setShapeFill] = useState(false)
+  const [noteColor, setNoteColor] = useState(NOTE_COLORS[0])
   const [imgs, setImgs] = useState<Map<string, HTMLImageElement>>(new Map())
   const [smooth, setSmooth] = useState(() => {
     try {
@@ -124,12 +136,12 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   }
   const pickTool = (t: Tool) => {
     if (t !== 'text') sweepEmpty()
-    if (t !== 'select') setSelectedId(null)
+    if (t !== 'select') setSelection(EMPTY_SEL)
     setTool(t)
   }
   const goPage = (i: number) => {
     sweepEmpty()
-    setSelectedId(null)
+    setSelection(EMPTY_SEL)
     setIdx(i)
   }
 
@@ -213,18 +225,29 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
       }
       patch({ images: [...(page.images ?? []), box] })
       setTool('select')
-      setSelectedId(box.id)
+      setSelection({ ...EMPTY_SEL, images: [box.id] })
     } catch {
       alert('Resim eklenemedi.')
     } finally {
       setBusy(false)
     }
   }
-  const deleteImage = () => {
-    if (!selectedId) return
-    patch({ images: (page.images ?? []).filter((i) => i.id !== selectedId) })
-    setSelectedId(null)
+  const deleteSelected = () => {
+    const sc: Scene = { strokes: page.strokes, shapes: page.shapes ?? [], images: page.images ?? [], notes: page.notes ?? [] }
+    patch(deleteSelection(sc, selection))
+    setSelection(EMPTY_SEL)
   }
+  const placeNote = (x: number, y: number) => {
+    const w = 220
+    const note: Sticky = {
+      id: uid(), w, h: 160, text: '', color: noteColor,
+      x: Math.min(Math.max(10, x - w / 2), PAGE_W - w - 10),
+      y: Math.min(Math.max(10, y - 30), PAGE_H - 170),
+    }
+    patch({ notes: [...(page.notes ?? []), note] })
+  }
+  const editNote = (id: string, text: string) =>
+    patch({ notes: (page.notes ?? []).map((n) => (n.id === id ? { ...n, text } : n)) })
   const toggleSmooth = () => {
     setSmooth(!smooth)
     try { localStorage.setItem('technote:smooth', smooth ? '0' : '1') } catch { /* yok say */ }
@@ -274,33 +297,36 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
       </header>
 
       <div className="tools">
-        {(['pen', 'highlighter', 'eraser', 'text', 'select'] as Tool[]).map((t) => (
+        {(['pen', 'highlighter', 'eraser', 'shape', 'note', 'text', 'select'] as Tool[]).map((t) => (
           <button key={t} className={tool === t ? 'on' : ''} onClick={() => pickTool(t)}>
-            {{ pen: '✎ Kalem', highlighter: '🖍 Fosforlu', eraser: '⌫ Silgi', text: 'T Yazı', select: '⬚ Resim seç' }[t]}
+            {{ pen: '✎ Kalem', highlighter: '🖍 Fosforlu', eraser: '⌫ Silgi', text: 'T Yazı', select: '⬚ Seç / taşı', shape: '▭ Şekil', note: '🗒 Not' }[t]}
           </button>
         ))}
         <span className="sep" />
-        {(tool === 'highlighter' ? HL_COLORS : COLORS).map((c) => (
-          <button
-            key={c}
-            className={`swatch ${(tool === 'highlighter' ? hlColor : color) === c ? 'on' : ''}`}
-            style={{ background: c }}
-            aria-label={COLOR_NAMES[c]}
-            title={COLOR_NAMES[c]}
-            onClick={() => (tool === 'highlighter' ? setHlColor(c) : setColor(c))}
-          />
-        ))}
+        {(tool === 'highlighter' ? HL_COLORS : tool === 'note' ? NOTE_COLORS : COLORS).map((c) => {
+          const cur = tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color
+          return (
+            <button
+              key={c}
+              className={`swatch ${cur === c ? 'on' : ''}`}
+              style={{ background: c }}
+              aria-label={COLOR_NAMES[c]}
+              title={COLOR_NAMES[c]}
+              onClick={() => (tool === 'highlighter' ? setHlColor(c) : tool === 'note' ? setNoteColor(c) : setColor(c))}
+            />
+          )
+        })}
         <span className="preview" title="Seçili renk ve kalınlık">
           <i
             style={{
-              background: tool === 'highlighter' ? hlColor : color,
+              background: tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color,
               opacity: tool === 'highlighter' ? 0.5 : 1,
               width: tool === 'text' ? 14 : Math.min(30, Math.max(3, tool === 'highlighter' ? width * 2.5 : width * 1.6)),
               height: tool === 'text' ? 14 : Math.min(30, Math.max(3, tool === 'highlighter' ? width * 2.5 : width * 1.6)),
             }}
           />
         </span>
-        <span className="cname">{COLOR_NAMES[tool === 'highlighter' ? hlColor : color]}</span>
+        <span className="cname">{COLOR_NAMES[tool === 'highlighter' ? hlColor : tool === 'note' ? noteColor : color]}</span>
         <span className="sep" />
         {tool === 'text' ? (
           <>
@@ -315,7 +341,17 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
           <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />
         )}
         <span className="spacer" />
-        {tool === 'select' && selectedId && <button onClick={deleteImage}>🗑 Resmi sil</button>}
+        {tool === 'select' && !isEmptySel(selection) && <button onClick={deleteSelected}>🗑 Sil</button>}
+        {tool === 'shape' && (
+          <>
+            <select value={shapeKind} onChange={(e) => setShapeKind(e.target.value as ShapeKind)}>
+              {(Object.keys(SHAPE_NAMES) as ShapeKind[]).map((k) => (
+                <option key={k} value={k}>{SHAPE_NAMES[k]}</option>
+              ))}
+            </select>
+            <button className={shapeFill ? 'on' : ''} onClick={() => setShapeFill(!shapeFill)}>Dolgu</button>
+          </>
+        )}
         <button onClick={() => imgInput.current?.click()} disabled={busy}>🖼 Resim</button>
         <input
           ref={imgInput}
@@ -353,13 +389,25 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
               scrollRef={wrap}
               fingerDraw={fingerDraw}
               imgs={imgs}
-              selectedId={selectedId}
+              selection={selection}
               smooth={smooth}
-              onImages={(images) => patch({ images })}
-              onSelect={setSelectedId}
-              onStrokes={(strokes: Stroke[]) => patch({ strokes })}
+              shapeKind={shapeKind}
+              shapeFill={shapeFill}
+              onScene={(sc) => patch(sc)}
+              onSelect={setSelection}
+              onPlaceNote={placeNote}
               onPlaceText={placeText}
             />
+            {(page.notes ?? []).map((n) => (
+              <textarea
+                key={n.id}
+                className="note-text"
+                placeholder={tool === 'note' ? 'Not yaz…' : ''}
+                value={n.text}
+                onChange={(e) => editNote(n.id, e.target.value)}
+                style={{ left: n.x, top: n.y, width: n.w, height: n.h, pointerEvents: tool === 'note' ? 'auto' : 'none' }}
+              />
+            ))}
             {page.texts.map((t) => (
               <div
                 key={t.id}
