@@ -180,3 +180,17 @@ export const strokesToPng = (strokes: Stroke[], maxSide = 1400): { b64: string; 
   for (const s of strokes) if (s.tool === 'pen') drawStroke(ctx, { ...s, color: '#000' }, true)
   return { b64: c.toDataURL('image/png').split(',')[1], w, h }
 }
+
+// Kalem çizgilerinin parmak izi: değişip değişmediğini anlamak için (arama indeksi)
+export const hashStrokes = (strokes: Stroke[]): string => {
+  let h = 2166136261
+  for (const s of strokes) {
+    if (s.tool !== 'pen') continue
+    for (const p of s.points) {
+      h ^= Math.round(p[0] * 2) + Math.round(p[1] * 2) * 7
+      h = Math.imul(h, 16777619)
+    }
+    h ^= 0x9e3779b9
+  }
+  return (h >>> 0).toString(36)
+}

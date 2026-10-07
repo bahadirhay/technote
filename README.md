@@ -39,7 +39,12 @@ Vercel → Settings → Environment Variables:
 Gizlilik: Gemini ücretsiz katmanında gönderilen içerik Google tarafından ürün geliştirmede kullanılabilir.
 Apple Scribble Türkçeyi desteklemez, bu yüzden kullanılmıyor.
 
-Kullanım: "Seç / taşı" ile el yazısını çevrele → "Aa Yazıya çevir".
+Kullanım:
+- "Seç / taşı" ile el yazısını çevrele → "Aa Yazıya çevir"
+- Sayfanın altındaki "Aa Çevir": sayfadaki tüm el yazısını tek istekle çevirir (geri alınabilir).
+- Aranabilir el yazısı: sayfadan çıkarken ya da yazmayı bırakıp 45 sn geçince, değişen sayfa bir kez okutulur ve metni
+  sayfada gizli saklanır (yazı olduğu gibi kalır). Ana ekrandaki "Tüm notlarda ara" bu metni de tarar.
+  Hesabım'dan kapatılabilir. Bu istekler de günlük sınıra (OCR_DAILY_LIMIT) sayılır.
 
 ## Şekil düzeltme
 

@@ -4,6 +4,7 @@ import Account, { NewPassword } from './Account'
 import Admin from './Admin'
 import Auth from './Auth'
 import Editor from './Editor'
+import { searchNotebooks } from './search'
 import { cloudConfigured, fetchNotebooks, fetchProfile, removeNotebook, supabase, upsertNotebook, uploadPdf, type Profile } from './cloud'
 import { clearLegacyNotebooks, exportBackup, importBackup, loadLegacyNotebooks, loadLocalPdf } from './store'
 import { newPage, uid, type Notebook } from './types'
@@ -85,6 +86,8 @@ function Notes({ profile: initial }: { profile: Profile }) {
   const [account, setAccount] = useState(false)
   const [nbs, setNbs] = useState<Notebook[] | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
+  const [openPage, setOpenPage] = useState(0)
+  const [query, setQuery] = useState('')
   const [admin, setAdmin] = useState(false)
   const [sync, setSync] = useState<'ok' | 'saving' | 'error'>('ok')
   const [loadErr, setLoadErr] = useState('')
@@ -175,7 +178,15 @@ function Notes({ profile: initial }: { profile: Profile }) {
           await flush()
           setOpenId(null)
         }}
-        onChange={(nb) => update(nbs.map((n) => (n.id === nb.id ? nb : n)), [nb.id])}
+        onChange={(nb) => update(ref.current.map((n) => (n.id === nb.id ? nb : n)), [nb.id])}
+        // Arka plan tanıma sonucu: o anki en güncel defterin üstüne sadece arama metni işlenir
+        onPageMeta={(nbId, pageId, meta) =>
+          update(
+            ref.current.map((n) => (n.id === nbId ? { ...n, pages: n.pages.map((p) => (p.id === pageId ? { ...p, ...meta } : p)) } : n)),
+            [nbId],
+          )
+        }
+        startPage={openPage}
         sync={sync}
       />
     )
@@ -236,9 +247,37 @@ function Notes({ profile: initial }: { profile: Profile }) {
           }}
         />
       </header>
+      <div className="searchbar">
+        <input
+          type="search"
+          placeholder="Tüm notlarda ara…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+      {query.trim().length >= 2 && (
+        <ul className="results">
+          {searchNotebooks(nbs, query).map((h, i) => (
+            <li key={`${h.nbId}-${h.pageIndex}-${i}`}>
+              <button
+                onClick={() => {
+                  setOpenPage(h.pageIndex)
+                  setOpenId(h.nbId)
+                  setQuery('')
+                }}
+              >
+                <span className="dot" style={{ background: h.nbColor }} />
+                <span className="rname">{h.nbName} · sayfa {h.pageIndex + 1}</span>
+                <span className="snip">{h.snippet}</span>
+              </button>
+            </li>
+          ))}
+          {searchNotebooks(nbs, query).length === 0 && <li className="muted pad">Sonuç yok.</li>}
+        </ul>
+      )}
       <div className="shelf">
         {nbs.map((nb) => (
-          <div key={nb.id} className="book" style={{ background: nb.color }} onClick={() => setOpenId(nb.id)}>
+          <div key={nb.id} className="book" style={{ background: nb.color }} onClick={() => { setOpenPage(0); setOpenId(nb.id) }}>
             <span className="book-name">{nb.name}</span>
             <span className="book-meta">{nb.pages.length} sayfa</span>
             <span className="book-actions" onClick={(e) => e.stopPropagation()}>

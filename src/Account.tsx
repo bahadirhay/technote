@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { selfTest } from './ocr'
+import { indexEnabled, setIndexEnabled } from './search'
 import { supabase, updateDisplayName, updatePassword, type Profile } from './cloud'
 
 export function NewPassword({ onDone }: { onDone: () => void }) {
@@ -39,6 +40,7 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
   const [pwMsg, setPwMsg] = useState('')
   const [ocrMsg, setOcrMsg] = useState('')
   const [ocrBusy, setOcrBusy] = useState(false)
+  const [indexOn, setIndexOn] = useState(indexEnabled())
 
   const saveName = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -97,6 +99,17 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
 
         <section>
           <h2>El yazısı çevirme</h2>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={indexOn}
+              onChange={(e) => {
+                setIndexOn(e.target.checked)
+                setIndexEnabled(e.target.checked)
+              }}
+            />
+            Arama için el yazımı arka planda tanı (yazın değişmez; her sayfa için en fazla bir istek)
+          </label>
           <button
             disabled={ocrBusy}
             onClick={async () => {

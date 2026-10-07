@@ -104,6 +104,8 @@ export interface Page {
   images?: ImageBox[]
   shapes?: Shape[]
   notes?: Sticky[]
+  searchText?: string
+  indexedHash?: string
   pdf?: { docId: string; pageNum: number }
 }
 

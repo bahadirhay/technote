@@ -69,3 +69,14 @@ button.link { border: 0; background: none; color: #1d4ed8; min-height: 32px; }
 .note-text { position: absolute; background: transparent; border: 0; outline: none; resize: none; padding: 12px; font: 20px/1.3 "Marker Felt", "Bradley Hand", system-ui, sans-serif; color: #1f2937; overflow: hidden; }
 
 .selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 72px); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fff; border: 1px solid #cbd5e1; border-radius: 14px; box-shadow: 0 6px 20px #0003; max-width: calc(100vw - 16px); white-space: nowrap; }
+
+.searchbar { padding: 12px 20px 0; max-width: 720px; }
+.searchbar input { width: 100%; min-height: 44px; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0 14px; background: #fff; }
+.results { list-style: none; margin: 8px 20px 0; padding: 0; max-width: 720px; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; }
+.results li + li { border-top: 1px solid #e2e8f0; }
+.results button { width: 100%; text-align: left; border: 0; border-radius: 0; display: grid; grid-template-columns: 12px 1fr; column-gap: 10px; align-items: center; padding: 10px 14px; }
+.results .dot { width: 12px; height: 12px; border-radius: 50%; grid-row: span 2; }
+.results .rname { font-weight: 600; }
+.results .snip { color: #64748b; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pad { padding: 12px 14px; }
+.pager { overflow-x: auto; }

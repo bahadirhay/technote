@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PageCanvas from './PageCanvas'
 import { readHandwriting } from './ocr'
 import { deleteSelection } from './geometry'
-import { strokesToPng } from './ink'
+import { hashStrokes, strokesToPng } from './ink'
+import { indexEnabled } from './search'
 import { renderPdfPage, openPdf } from './pdf'
 import { loadImage, saveImage, savePdf } from './store'
 import {
@@ -41,11 +42,13 @@ interface Props {
   nb: Notebook
   onChange: (nb: Notebook) => void
   onBack: () => void
+  startPage?: number
+  onPageMeta: (nbId: string, pageId: string, meta: { searchText: string; indexedHash: string }) => void
   sync?: 'ok' | 'saving' | 'error'
 }
 
-export default function Editor({ nb, onChange, onBack, sync }: Props) {
-  const [idx, setIdx] = useState(0)
+export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMeta }: Props) {
+  const [idx, setIdx] = useState(startPage ?? 0)
   const [tool, setTool] = useState<Tool>('pen')
   const [color, setColor] = useState(COLORS[0])
   const [hlColor, setHlColor] = useState(HL_COLORS[0])
@@ -159,6 +162,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
     setTool(t)
   }
   const goPage = (i: number) => {
+    void indexPage(page.id)
     sweepEmpty()
     setSelection(EMPTY_SEL)
     setActiveText(null)
@@ -289,9 +293,51 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
   }
   const editText = (id: string, p: Partial<TextBox>) =>
     patch({ texts: page.texts.map((t) => (t.id === id ? { ...t, ...p } : t)) })
+  // --- Arka planda el yazısı tanıma (arama için). Yazı olduğu gibi kalır, sadece metni saklanır. ---
+  const nbRef = useRef(nb)
+  useEffect(() => {
+    nbRef.current = nb
+  })
+  const indexing = useRef(new Set<string>())
+  const indexBlocked = useRef(false)
+  const indexPage = async (pageId: string) => {
+    if (indexBlocked.current || indexing.current.has(pageId) || !indexEnabled()) return
+    const pg = nbRef.current.pages.find((p) => p.id === pageId)
+    if (!pg) return
+    const pen = pg.strokes.filter((s) => s.tool === 'pen')
+    const hash = hashStrokes(pen)
+    if (!pen.length) {
+      if (pg.searchText || pg.indexedHash) onPageMeta(nbRef.current.id, pageId, { searchText: '', indexedHash: '' })
+      return
+    }
+    if (pg.indexedHash === hash) return
+    const png = strokesToPng(pen)
+    if (!png) return
+    indexing.current.add(pageId)
+    try {
+      const text = await readHandwriting(png.b64)
+      onPageMeta(nbRef.current.id, pageId, { searchText: text === '[okunamadı]' ? '' : text, indexedHash: hash })
+    } catch (e) {
+      // Kota doldu / kurulu değil / yetki yok: bu oturumda tekrar deneme
+      if (/hakkın doldu|kurulmadı|onaylı|süresi dolmuş|kotası/.test((e as Error).message)) indexBlocked.current = true
+    } finally {
+      indexing.current.delete(pageId)
+    }
+  }
+  // Yazmayı bırakıp 45 sn geçince, ya da uygulama arka plana gidince
+  useEffect(() => {
+    const t = window.setTimeout(() => void indexPage(page.id), 45000)
+    return () => window.clearTimeout(t)
+  }, [page.strokes, page.id])
+  useEffect(() => {
+    const onHide = () => document.visibilityState === 'hidden' && void indexPage(page.id)
+    document.addEventListener('visibilitychange', onHide)
+    return () => document.removeEventListener('visibilitychange', onHide)
+  }, [page.id])
+
   // Seçili el yazısını Claude ile okutup yazı kutusuna çevirir
-  const convertToText = async () => {
-    const picked = selection.strokes.map((i) => page.strokes[i]).filter((s) => s && s.tool === 'pen')
+  const convertStrokes = async (indices: number[]) => {
+    const picked = indices.map((i) => page.strokes[i]).filter((s) => s && s.tool === 'pen')
     const png = strokesToPng(picked)
     if (!png) return alert('Önce çevirmek istediğin el yazısını "Seç / taşı" ile çevreleyerek seç.')
     setOcrBusy(true)
@@ -320,7 +366,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
         id: uid(), x: left, y: Math.max(0, top), w: Math.min(PAGE_W - left - 16, Math.max(260, x1 - x0 + 60)),
         text, font, size, color,
       }
-      const drop = new Set(selection.strokes.filter((i) => page.strokes[i]?.tool === 'pen'))
+      const drop = new Set(indices.filter((i) => page.strokes[i]?.tool === 'pen'))
       patch({ strokes: page.strokes.filter((_, i) => !drop.has(i)), texts: [...page.texts.filter((t) => t.text.trim()), box] })
       setSelection(EMPTY_SEL)
       setTool('text')
@@ -331,13 +377,21 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
       setOcrBusy(false)
     }
   }
+  const convertToText = () => convertStrokes(selection.strokes)
+  // Sayfadaki tüm el yazısını tek istekte çevirir
+  const convertPage = () => {
+    const all = page.strokes.flatMap((s, i) => (s.tool === 'pen' ? [i] : []))
+    if (!all.length) return alert('Bu sayfada çevrilecek el yazısı yok.')
+    if (!confirm('Sayfadaki tüm el yazısı yazıya çevrilsin mi?\nİstersen geri al (↶) ile eski haline dönebilirsin.')) return
+    void convertStrokes(all)
+  }
   const activeBox = tool === 'text' ? page.texts.find((t) => t.id === activeText) : undefined
   const removeText = (id: string) => patch({ texts: page.texts.filter((t) => t.id !== id) })
 
   return (
     <div className="editor">
       <header className="bar">
-        <button onClick={() => { sweepEmpty(); onBack() }}>‹ Defterler</button>
+        <button onClick={() => { sweepEmpty(); void indexPage(page.id); onBack() }}>‹ Defterler</button>
         <strong className="title">{nb.name}</strong>
         <span className={`syncdot ${sync ?? 'ok'}`} title={sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi' : 'Kaydedildi'} />
         <span className="spacer" />
@@ -535,6 +589,7 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
         <span>{idx + 1} / {nb.pages.length}</span>
         <button onClick={() => goPage(Math.min(nb.pages.length - 1, idx + 1))} disabled={idx >= nb.pages.length - 1}>›</button>
         <span className="spacer" />
+        <button onClick={convertPage} disabled={ocrBusy} title="Sayfadaki tüm el yazısını yazıya çevir">Aa Çevir</button>
         <button onClick={() => addPage()}>+ Sayfa</button>
         <button onClick={delPage}>Sayfayı sil</button>
       </footer>
