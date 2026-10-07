@@ -125,6 +125,21 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
     }
   }, [page.images, imgs])
 
+  // Masaüstü/klavyeli iPad: Delete veya Backspace seçili öğeleri siler
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.tagName === 'SELECT')) return
+      if (tool === 'select' && !isEmptySel(selection)) {
+        e.preventDefault()
+        deleteSelected()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   const commit = (pages: Page[]) => {
     undo.current.push(nb.pages)
     if (undo.current.length > 50) undo.current.shift()
@@ -425,10 +440,6 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
           <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />
         )}
         <span className="spacer" />
-        {tool === 'select' && !isEmptySel(selection) && <button onClick={deleteSelected}>🗑 Sil</button>}
-        {tool === 'select' && selection.strokes.length > 0 && (
-          <button className="on" onClick={convertToText} disabled={ocrBusy}>{ocrBusy ? 'Çevriliyor…' : 'Aa Yazıya çevir'}</button>
-        )}
         {tool === 'shape' && (
           <>
             <select value={shapeKind} onChange={(e) => setShapeKind(e.target.value as ShapeKind)}>
@@ -518,6 +529,20 @@ export default function Editor({ nb, onChange, onBack, sync }: Props) {
         </div>
       </div>
 
+      {tool === 'select' && !isEmptySel(selection) && (
+        <div className="selbar">
+          <span className="muted">
+            {selection.strokes.length + selection.shapes.length + selection.images.length + selection.notes.length} seçili
+          </span>
+          <button onClick={deleteSelected}>🗑 Sil</button>
+          {selection.strokes.length > 0 && (
+            <button className="on" onClick={convertToText} disabled={ocrBusy}>
+              {ocrBusy ? 'Çevriliyor…' : 'Aa Yazıya çevir'}
+            </button>
+          )}
+          <button onClick={() => setSelection(EMPTY_SEL)}>Bırak</button>
+        </div>
+      )}
       <footer className="bar pager">
         <button onClick={() => goPage(Math.max(0, idx - 1))} disabled={idx === 0}>‹</button>
         <span>{idx + 1} / {nb.pages.length}</span>
