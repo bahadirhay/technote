@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { OcrFailure, lastProvider, ocrStatus, selfTest, type OcrStatus } from './ocr'
 import { indexEnabled, setIndexEnabled } from './search'
+import { donateState, setDonate } from './donate'
 import { supabase, updateDisplayName, updatePassword, type Profile } from './cloud'
 
 export function NewPassword({ onDone }: { onDone: () => void }) {
@@ -49,6 +50,7 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
     }
   })
   const [srv, setSrv] = useState<OcrStatus | null>(null)
+  const [donate, setDonateUi] = useState(donateState() === 'on')
   useEffect(() => {
     if (profile.is_admin) void ocrStatus().then(setSrv)
   }, [profile.is_admin])
@@ -127,6 +129,25 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
             <option value="icloud">Evet, kayıt bitince iCloud ekranını aç</option>
             <option value="device">Hayır, sadece bu cihazda kalsın</option>
           </select>
+        </section>
+
+        <section>
+          <h2>Veri bağışla (anonim)</h2>
+          <p className="muted">
+            Açıksa el yazın ve çevrilen yazı, adın ve defterin olmadan saklanır; Türkçe el yazısını ücretsiz tanıyan kendi
+            sistemimizi eğitmek için kullanılır. Sadece bundan sonrası için geçerlidir.
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={donate}
+              onChange={(e) => {
+                setDonate(e.target.checked)
+                setDonateUi(e.target.checked)
+              }}
+            />{' '}
+            El yazımı anonim olarak bağışla
+          </label>
         </section>
 
         <section>

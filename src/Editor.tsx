@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PageCanvas from './PageCanvas'
+import { sendCorrection, sendSample } from './donate'
 import { OcrFailure, ocrAvailable, readHandwriting } from './ocr'
 import { deleteSelection } from './geometry'
 import { hashStrokes, strokesToPng } from './ink'
@@ -315,8 +316,17 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
     const t: TextBox = { id: uid(), x: left, y: Math.max(0, top), w: PAGE_W - left - 16, text: '', font, size: fontSize, color }
     patch({ texts: [...page.texts.filter((x) => x.text.trim()), t] })
   }
-  const editText = (id: string, p: Partial<TextBox>) =>
+  const sampleIds = useRef(new Map<string, string>())
+  const corrTimer = useRef<number | undefined>(undefined)
+  const editText = (id: string, p: Partial<TextBox>) => {
+    const sid = sampleIds.current.get(id)
+    if (sid && p.text !== undefined) {
+      window.clearTimeout(corrTimer.current)
+      const txt = p.text
+      corrTimer.current = window.setTimeout(() => void sendCorrection(sid, txt), 2000)
+    }
     patch({ texts: page.texts.map((t) => (t.id === id ? { ...t, ...p } : t)) })
+  }
   // --- Arka planda el yazısı tanıma (arama için). Yazı olduğu gibi kalır, sadece metni saklanır. ---
   const nbRef = useRef(nb)
   useEffect(() => {
@@ -598,6 +608,9 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         id: uid(), x: left, y: Math.max(0, top), w: Math.min(PAGE_W - left - 16, Math.max(260, x1 - x0 + 60)),
         text, font, size, color,
       }
+      void sendSample(picked, text).then((sid) => {
+        if (sid) sampleIds.current.set(box.id, sid)
+      })
       const drop = new Set(indices.filter((i) => page.strokes[i]?.tool === 'pen'))
       patch({ strokes: page.strokes.filter((_, i) => !drop.has(i)), texts: [...page.texts.filter((t) => t.text.trim()), box] })
       if (!auto) {
