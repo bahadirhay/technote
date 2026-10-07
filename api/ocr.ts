@@ -73,6 +73,34 @@ async function readWithGemini(image: string, apiKey: string): Promise<string> {
   throw last
 }
 
+// OpenAI uyumlu herhangi bir servis (Groq, Mistral, OpenRouter...). Ayarlar: OCR_ALT_BASE_URL, OCR_ALT_API_KEY, OCR_ALT_MODEL
+async function readWithAlt(image: string, key: string, base: string, model: string): Promise<string> {
+  const res = await fetch(`${base.replace(/\/+$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      max_tokens: 1000,
+      messages: [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: [{ type: 'text', text: USER }, { type: 'image_url', image_url: { url: `data:image/png;base64,${image}` } }] },
+      ],
+    }),
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } | string }
+    const msg = typeof err.error === 'string' ? err.error : err.error?.message ?? ''
+    const detail = `${model}: ${msg}`.slice(0, 240)
+    if (res.status === 429) throw new OcrError('rate_limited', 429, 429, detail)
+    if (res.status === 401 || res.status === 403) throw new OcrError('not_configured', 503, res.status, detail)
+    throw new OcrError('upstream', 502, res.status, detail)
+  }
+  const data = (await res.json()) as { choices?: { message?: { content?: string | { text?: string }[] } }[] }
+  const c = data.choices?.[0]?.message?.content
+  return (typeof c === 'string' ? c : (c ?? []).map((p) => p.text ?? '').join('\n')).trim()
+}
+
 async function readWithClaude(image: string, apiKey: string): Promise<string> {
   const client = new Anthropic({ apiKey })
   try {
@@ -101,25 +129,41 @@ async function readWithClaude(image: string, apiKey: string): Promise<string> {
   }
 }
 
+interface Provider {
+  name: string
+  run: (image: string) => Promise<string>
+}
+
+// Sırayla denenir: Gemini (ücretsiz) -> yedek (ücretsiz, isteğe bağlı) -> Claude (ücretli, en son)
+const providers = (): Provider[] => {
+  const list: Provider[] = []
+  const g = env('GEMINI_API_KEY')
+  if (g) list.push({ name: 'gemini', run: (img) => readWithGemini(img, g) })
+  const [ak, ab, am] = [env('OCR_ALT_API_KEY'), env('OCR_ALT_BASE_URL'), env('OCR_ALT_MODEL')]
+  if (ak && ab && am) list.push({ name: 'yedek', run: (img) => readWithAlt(img, ak, ab, am) })
+  const c = env('ANTHROPIC_API_KEY')
+  if (c) list.push({ name: 'claude', run: (img) => readWithClaude(img, c) })
+  return list
+}
+
 // Durum kontrolü: hangi ayar eksik? (sadece ayar ADLARI döner, değerler asla)
 export async function GET(): Promise<Response> {
   const missing: string[] = []
-  if (!env('GEMINI_API_KEY') && !env('ANTHROPIC_API_KEY')) missing.push('GEMINI_API_KEY')
+  const names = providers().map((p) => p.name)
+  if (!names.length) missing.push('GEMINI_API_KEY')
   if (!env('VITE_SUPABASE_URL')) missing.push('VITE_SUPABASE_URL')
   if (!env('VITE_SUPABASE_ANON_KEY')) missing.push('VITE_SUPABASE_ANON_KEY')
-  const provider = env('GEMINI_API_KEY') ? 'gemini' : env('ANTHROPIC_API_KEY') ? 'claude' : null
-  return new Response(JSON.stringify({ ready: missing.length === 0, provider, missing }), {
+  return new Response(JSON.stringify({ ready: missing.length === 0, provider: names.join(' → ') || null, missing }), {
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   })
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const geminiKey = env('GEMINI_API_KEY')
-  const claudeKey = env('ANTHROPIC_API_KEY')
+  const chain = providers()
   const supaUrl = env('VITE_SUPABASE_URL')
   const supaKey = env('VITE_SUPABASE_ANON_KEY')
-  if ((!geminiKey && !claudeKey) || !supaUrl || !supaKey) {
-    console.error('ocr: eksik ayar', { gemini: !!geminiKey, claude: !!claudeKey, supabaseUrl: !!supaUrl, supabaseKey: !!supaKey })
+  if (!chain.length || !supaUrl || !supaKey) {
+    console.error('ocr: eksik ayar', { saglayici: chain.map((p) => p.name), supabaseUrl: !!supaUrl, supabaseKey: !!supaKey })
     return json({ error: 'not_configured', detail: 'Sunucuda ayar eksik' }, 503)
   }
 
@@ -152,15 +196,21 @@ export async function POST(request: Request): Promise<Response> {
   })
   if (lim.ok && (await lim.json()) === false) return json({ error: 'daily_limit', limit: DAILY_LIMIT }, 429)
 
-  // 4) Okut
-  try {
-    const text = geminiKey ? await readWithGemini(image, geminiKey) : await readWithClaude(image, claudeKey!)
-    return json({ text })
-  } catch (e) {
-    if (e instanceof OcrError) {
-      console.error('ocr hata', e.code, e.upstream, e.detail)
-      return json({ error: e.code, status: e.upstream, detail: e.detail }, e.status)
+  // 4) Okut: sağlayıcıları sırayla dene, biri çalışınca dur
+  const errs: { name: string; err: OcrError }[] = []
+  for (const p of chain) {
+    try {
+      const text = await p.run(image)
+      return json({ text, provider: p.name })
+    } catch (e) {
+      const err = e instanceof OcrError ? e : new OcrError('server', 500)
+      console.error('ocr hata', p.name, err.code, err.upstream, err.detail)
+      if (err.code === 'refused') return json({ error: 'refused' }, 422)
+      errs.push({ name: p.name, err })
     }
-    return json({ error: 'server' }, 500)
   }
+  // Hepsi başarısız: en bilgilendirici hatayı döndür, ayrıntıda tüm sağlayıcılar yazar (sadece yönetici görür)
+  const main = (errs.find((x) => x.err.code !== 'not_configured') ?? errs[0]).err
+  const detail = errs.map((x) => `${x.name}: ${x.err.detail ?? x.err.code}`).join(' | ').slice(0, 480)
+  return json({ error: main.code, status: main.upstream, detail }, main.status)
 }

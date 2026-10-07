@@ -30,6 +30,9 @@ export interface OcrStatus {
 
 let status: Promise<OcrStatus> | null = null
 
+// Son başarılı çevirmeyi hangi servis yaptı (sadece yönetici testinde gösterilir)
+export let lastProvider = ''
+
 // Sunucuda servis kurulu mu? (oturum başına bir kez sorulur)
 export const ocrStatus = (): Promise<OcrStatus> => {
   status ??= fetch('/api/ocr', { cache: 'no-store' })
@@ -55,7 +58,7 @@ export const readHandwriting = async (b64: string): Promise<string> => {
   } catch {
     throw new OcrFailure('Bağlantı hatası, tekrar dene.', false, 'fetch başarısız')
   }
-  const body = (await res.json().catch(() => ({}))) as { text?: string; error?: string; status?: number; detail?: string }
+  const body = (await res.json().catch(() => ({}))) as { text?: string; error?: string; status?: number; detail?: string; provider?: string }
   if (!res.ok) {
     const tech = [body.error ?? `HTTP ${res.status}`, body.status, body.detail].filter(Boolean).join(' · ')
     if (body.error === 'not_configured' || (!body.error && res.status === 404)) {
@@ -65,6 +68,7 @@ export const readHandwriting = async (b64: string): Promise<string> => {
     if (body.error && FRIENDLY[body.error]) throw new OcrFailure(FRIENDLY[body.error], false, tech)
     throw new OcrFailure(GENERIC, false, tech)
   }
+  lastProvider = body.provider ?? ''
   return (body.text ?? '').trim()
 }
 

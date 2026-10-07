@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { OcrFailure, ocrStatus, selfTest, type OcrStatus } from './ocr'
+import { OcrFailure, lastProvider, ocrStatus, selfTest, type OcrStatus } from './ocr'
 import { indexEnabled, setIndexEnabled } from './search'
 import { supabase, updateDisplayName, updatePassword, type Profile } from './cloud'
 
@@ -127,7 +127,7 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
                   setOcrMsg('Deneniyor…')
                   try {
                     const t = await selfTest()
-                    setOcrMsg(t ? `✓ Çalışıyor. Okunan: "${t}"` : 'Servis cevap verdi ama yazı okunamadı.')
+                    setOcrMsg(t ? `✓ Çalışıyor (${lastProvider || '?'}). Okunan: "${t}"` : 'Servis cevap verdi ama yazı okunamadı.')
                   } catch (e) {
                     setOcrMsg(`✗ ${(e as OcrFailure).technical || (e as Error).message}`)
                   } finally {
