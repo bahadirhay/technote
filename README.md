@@ -33,7 +33,7 @@ iPad'de Safari'den açıp Paylaş → "Ana Ekrana Ekle" ile uygulama gibi kullan
 Vercel → Settings → Environment Variables:
 - `GEMINI_API_KEY` (önerilen, ücretsiz, kart istemez): aistudio.google.com → "Get API key".
 - `GEMINI_MODEL` (isteğe bağlı): varsayılan `gemini-flash-latest`.
-- `OCR_DAILY_LIMIT` (isteğe bağlı): kullanıcı başı günlük çeviri sayısı, varsayılan 30. Sınır için `supabase/migration-003-ocr-limit.sql` çalıştırılmalı.
+- `OCR_DAILY_LIMIT` (isteğe bağlı): kullanıcı başı günlük çeviri sayısı, varsayılan 300. Sınır için `supabase/migration-003-ocr-limit.sql` çalıştırılmalı.
 - Yedek servis (isteğe bağlı, Gemini hata verirse sırayla denenir; OpenAI uyumlu herhangi bir servis):
   `OCR_ALT_BASE_URL`, `OCR_ALT_API_KEY`, `OCR_ALT_MODEL`. Örnek (Groq, kart istemez):
   `https://api.groq.com/openai/v1`, model `meta-llama/llama-4-scout-17b-16e-instruct`. Model adlarını sağlayıcının
