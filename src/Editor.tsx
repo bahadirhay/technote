@@ -63,6 +63,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const [width, setWidth] = useState(2.5)
   const [font, setFont] = useState('Playfair Italic')
   const [fontSize, setFontSize] = useState(22)
+  const sizeTouched = useRef(false)
   const [bgImage, setBgImage] = useState<HTMLCanvasElement | null>(null)
   const [scale, setScale] = useState(1)
   const [busy, setBusy] = useState(false)
@@ -169,6 +170,12 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  const setTextSize = (v: number) => {
+    const n = Math.min(80, Math.max(10, Math.round(v)))
+    sizeTouched.current = true
+    setFontSize(n)
+    if (activeBox) editText(activeBox.id, { size: n })
+  }
   const commit = (pages: Page[]) => {
     undo.current.push(nb.pages)
     if (undo.current.length > 50) undo.current.shift()
@@ -597,7 +604,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
       const x0 = Math.min(...rects.map((p) => p[0])), y0 = Math.min(...rects.map((p) => p[1]))
       const x1 = Math.max(...rects.map((p) => p[0]))
       const nLines = text.split('\n').length
-      const size = lineH ? Math.min(40, Math.max(14, Math.round(lineH * 0.6))) : Math.min(40, Math.max(18, Math.round((png.h / nLines) * 0.45)))
+      const size = sizeTouched.current ? fontSize : lineH ? Math.min(40, Math.max(14, Math.round(lineH * 0.6))) : Math.min(40, Math.max(18, Math.round((png.h / nLines) * 0.45)))
       const left = Math.min(Math.max(8, x0), PAGE_W - 140)
       // Çizgili/kareli sayfada ilk satırın tabanı en yakın çizgiye otursun
       let top = y0
@@ -775,16 +782,19 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
                 </button>
               ))}
             </div>
-            <input
-              type="number"
-              min={10}
-              max={80}
-              value={activeBox?.size ?? fontSize}
-              onChange={(e) => {
-                setFontSize(+e.target.value)
-                if (activeBox && +e.target.value >= 10) editText(activeBox.id, { size: +e.target.value })
-              }}
-            />
+            <div className="sizebar">
+              <button aria-label="Yazıyı küçült" onClick={() => setTextSize((activeBox?.size ?? fontSize) - 2)}>A−</button>
+              <input
+                type="range"
+                min={10}
+                max={80}
+                value={activeBox?.size ?? fontSize}
+                onChange={(e) => setTextSize(+e.target.value)}
+                aria-label="Yazı boyutu"
+              />
+              <button aria-label="Yazıyı büyüt" onClick={() => setTextSize((activeBox?.size ?? fontSize) + 2)}>A+</button>
+              <b>{activeBox?.size ?? fontSize}</b>
+            </div>
           </>
         ) : (
           <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />

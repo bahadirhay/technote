@@ -150,3 +150,6 @@ button.rec-on { background: #dc2626; color: #fff; border-color: #dc2626; }
 .fontchips { display: flex; gap: 6px; overflow-x: auto; max-width: 60vw; }
 .fontchip { flex: none; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; font-size: 18px; white-space: nowrap; }
 .fontchip.on { border-color: #2563eb; background: #dbeafe; }
+.sizebar { display: flex; align-items: center; gap: 6px; }
+.sizebar input[type=range] { width: 110px; min-height: 0; }
+.sizebar button { min-width: 36px; padding: 4px 8px; }
