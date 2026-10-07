@@ -565,10 +565,11 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   }, [page.id])
 
   // Seçili el yazısını Claude ile okutup yazı kutusuna çevirir
-  const convertStrokes = async (indices: number[]) => {
+  const convertStrokes = async (indices: number[], auto = false) => {
     const picked = indices.map((i) => page.strokes[i]).filter((s) => s && s.tool === 'pen')
     const png = strokesToPng(picked)
-    if (!png) return alert('Önce çevirmek istediğin el yazısını "Seç / taşı" ile çevreleyerek seç.')
+    if (!png) return auto ? undefined : alert('Önce çevirmek istediğin el yazısını "Seç / taşı" ile çevreleyerek seç.')
+    if (auto) picked.forEach((s) => autoTried.current.add(s))
     setOcrBusy(true)
     try {
       let text = ''
@@ -576,9 +577,10 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         text = await readHandwriting(png.b64)
       } catch (e) {
         if (e instanceof OcrFailure && e.unavailable) ocrDown()
+        if (auto) { setAutoConv(false); return alert('Otomatik yazı kapatıldı: ' + (e as Error).message) }
         return alert((e as Error).message)
       }
-      if (!text || text === '[okunamadı]') return alert('Yazı okunamadı. Daha net veya daha büyük yazmayı dene.')
+      if (!text || text === '[okunamadı]') return auto ? undefined : alert('Yazı okunamadı. Daha net veya daha büyük yazmayı dene.')
       const rects = picked.flatMap((s) => s.points)
       const x0 = Math.min(...rects.map((p) => p[0])), y0 = Math.min(...rects.map((p) => p[1]))
       const x1 = Math.max(...rects.map((p) => p[0]))
@@ -598,15 +600,38 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
       }
       const drop = new Set(indices.filter((i) => page.strokes[i]?.tool === 'pen'))
       patch({ strokes: page.strokes.filter((_, i) => !drop.has(i)), texts: [...page.texts.filter((t) => t.text.trim()), box] })
-      setSelection(EMPTY_SEL)
-      setTool('text')
-      setActiveText(box.id)
+      if (!auto) {
+        setSelection(EMPTY_SEL)
+        setTool('text')
+        setActiveText(box.id)
+      }
     } catch {
-      alert('Bağlantı hatası, tekrar dene.')
+      if (!auto) alert('Bağlantı hatası, tekrar dene.')
     } finally {
       setOcrBusy(false)
     }
   }
+  // Otomatik yazı: kalem 1.5 sn durunca yeni çizgileri seçili fontla yazıya çevirir
+  const autoTried = useRef(new WeakSet<object>())
+  const [autoConv, setAutoConv] = useState(() => {
+    try { return localStorage.getItem('technote:autoConv') === '1' } catch { return false }
+  })
+  const toggleAuto = () => {
+    if (!autoConv) nb.pages.forEach((p) => p.strokes.forEach((st) => autoTried.current.add(st)))
+    setAutoConv(!autoConv)
+    try { localStorage.setItem('technote:autoConv', autoConv ? '0' : '1') } catch { /* yok say */ }
+  }
+  const autoRun = useRef<() => void>(() => {})
+  autoRun.current = () => {
+    if (ocrBusy || tool !== 'pen') return
+    const idx2 = page.strokes.flatMap((s, i) => (s.tool === 'pen' && !autoTried.current.has(s) && s.points.length > 3 ? [i] : []))
+    if (idx2.length) void convertStrokes(idx2, true)
+  }
+  useEffect(() => {
+    if (!autoConv || !ocrReady) return
+    const t = setTimeout(() => autoRun.current(), 1500)
+    return () => clearTimeout(t)
+  }, [autoConv, ocrReady, page.strokes, ocrBusy, tool])
   const convertToText = () => convertStrokes(selection.strokes)
   // Sayfadaki tüm el yazısını tek istekte çevirir
   const convertPage = () => {
@@ -845,6 +870,11 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         <span>{idx + 1} / {nb.pages.length}</span>
         <button onClick={() => goPage(Math.min(nb.pages.length - 1, idx + 1))} disabled={idx >= nb.pages.length - 1}>›</button>
         <span className="spacer" />
+        {ocrReady && (
+          <button className={autoConv ? 'on' : ''} onClick={toggleAuto} title="Kalemi bırakınca yazıyı otomatik düzelt">
+            Aa Otomatik {autoConv ? 'açık' : 'kapalı'}
+          </button>
+        )}
         {ocrReady && (
           <button onClick={convertPage} disabled={ocrBusy} title="Sayfadaki tüm el yazısını yazıya çevir">Aa Çevir</button>
         )}
