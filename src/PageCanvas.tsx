@@ -72,6 +72,7 @@ export default function PageCanvas({
   const snap = useRef<Shape | null>(null)
   const snapTimer = useRef<number | undefined>(undefined)
   const still = useRef<Pt | null>(null)
+  const holdUntil = useRef(0)
   const lasso = useRef<Pt[] | null>(null)
   const erasing = useRef<Stroke[] | null>(null)
   const touches = useRef(new Map<number, number>())
@@ -250,7 +251,9 @@ export default function PageCanvas({
     still.current = p
     const rc = recClock?.()
     live.current = { tool, color, width, points: [p], ...(rc ? { rec: rc } : {}) }
-    draw(undefined, { stroke: live.current })
+    // Parmakla: ikinci parmak (yakınlaştırma) gelirse çizim hiç görünmesin diye kısa bekle
+    holdUntil.current = e.pointerType === 'touch' ? Date.now() + 90 : 0
+    if (!holdUntil.current) draw(undefined, { stroke: live.current })
   }
 
   const move = (e: React.PointerEvent) => {
@@ -258,7 +261,7 @@ export default function PageCanvas({
       const t = tap.current
       if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) > 10) t.ok = false
       const last = touches.current.get(e.pointerId)
-      if (e.pointerType === 'touch' && last != null && scrollRef.current) {
+      if (e.pointerType === 'touch' && last != null && scrollRef.current && touches.current.size < 2) {
         scrollRef.current.scrollTop -= e.clientY - last
         touches.current.set(e.pointerId, e.clientY)
       }
@@ -266,8 +269,9 @@ export default function PageCanvas({
     }
     if (e.pointerType === 'touch' && (!direct || touches.current.size >= 2)) {
       const last = touches.current.get(e.pointerId)
-      if (last != null && scrollRef.current) {
-        scrollRef.current.scrollTop -= (e.clientY - last) / touches.current.size
+      // 2 parmakta kaydırma/yakınlaştırmayı Editor yönetir (çift kaydırmayı önle)
+      if (last != null && scrollRef.current && touches.current.size < 2) {
+        scrollRef.current.scrollTop -= (e.clientY - last)
         touches.current.set(e.pointerId, e.clientY)
       }
       return
@@ -304,7 +308,7 @@ export default function PageCanvas({
         }
       }
     }
-    if (live.current) draw(undefined, { stroke: live.current })
+    if (live.current) { if (Date.now() >= holdUntil.current) draw(undefined, { stroke: live.current }) }
     else if (liveShape.current || (tool === 'select' && (drag.current || lasso.current))) draw()
   }
 

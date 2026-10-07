@@ -65,7 +65,10 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const [fontSize, setFontSize] = useState(22)
   const sizeTouched = useRef(false)
   const [bgImage, setBgImage] = useState<HTMLCanvasElement | null>(null)
-  const [scale, setScale] = useState(1)
+  const [fitScale, setFitScale] = useState(1)
+  const [zoom, setZoom] = useState(1)
+  const zoomRef = useRef(1)
+  const scale = fitScale * zoom
   const [busy, setBusy] = useState(false)
   const [activeText, setActiveText] = useState<string | null>(null)
   const [ocrBusy, setOcrBusy] = useState(false)
@@ -116,13 +119,69 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const undo = useRef<Page[][]>([])
   const redo = useRef<Page[][]>([])
   const wrap = useRef<HTMLDivElement>(null)
+  const paperRef = useRef<HTMLDivElement>(null)
+  // İki parmakla yakınlaştırma / kaydırma (resim büyütür gibi)
+  const fingers = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ d0: number; z0: number; cx: number; cy: number; ax: number; ay: number } | null>(null)
+  const anchor = useRef<{ cx: number; cy: number; ax: number; ay: number } | null>(null)
+  const applyZoom = (z: number) => {
+    const n = Math.min(4, Math.max(1, z))
+    zoomRef.current = n
+    setZoom(n)
+  }
+  const pinchDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (fingers.current.size === 2) {
+      const [a, b] = [...fingers.current.values()]
+      const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2
+      const pr = paperRef.current!.getBoundingClientRect()
+      const sc = fitScale * zoomRef.current
+      pinch.current = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: zoomRef.current, cx, cy, ax: (cx - pr.left) / sc, ay: (cy - pr.top) / sc }
+    }
+  }
+  const pinchMove = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch' || !fingers.current.has(e.pointerId)) return
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const p = pinch.current
+    if (!p || fingers.current.size < 2) return
+    const [a, b] = [...fingers.current.values()]
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2
+    anchor.current = { cx, cy, ax: p.ax, ay: p.ay }
+    applyZoom(p.z0 * (Math.hypot(a.x - b.x, a.y - b.y) / p.d0))
+    // yakınlaştırma değişmese de parmakların orta noktası kayarsa sayfa da kayar
+    layoutAnchor()
+  }
+  const pinchUp = (e: React.PointerEvent) => {
+    fingers.current.delete(e.pointerId)
+    if (fingers.current.size < 2) pinch.current = null
+  }
+  const layoutAnchor = () => {
+    const an = anchor.current, el = wrap.current, paper = paperRef.current
+    if (!an || !el || !paper) return
+    const pr = paper.getBoundingClientRect()
+    el.scrollLeft += pr.left + an.ax * fitScale * zoomRef.current - an.cx
+    el.scrollTop += pr.top + an.ay * fitScale * zoomRef.current - an.cy
+  }
+  useLayoutEffect(() => {
+    layoutAnchor()
+  }, [zoom, fitScale])
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault()
+    document.addEventListener('gesturestart', stop)
+    document.addEventListener('gesturechange', stop)
+    return () => {
+      document.removeEventListener('gesturestart', stop)
+      document.removeEventListener('gesturechange', stop)
+    }
+  }, [])
   const pdfInput = useRef<HTMLInputElement>(null)
 
   const page = nb.pages[Math.min(idx, nb.pages.length - 1)]
 
   useLayoutEffect(() => {
     const el = wrap.current!
-    const fit = () => setScale(Math.min(1.4, (el.clientWidth - 24) / PAGE_W))
+    const fit = () => setFitScale(Math.min(1.4, (el.clientWidth - 24) / PAGE_W))
     fit()
     const ro = new ResizeObserver(fit)
     ro.observe(el)
@@ -689,6 +748,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         <strong className="title">{nb.name}</strong>
         <span className={`syncdot ${sync ?? 'ok'}`} title={sync === 'saving' ? 'Kaydediliyor…' : sync === 'error' ? 'Kaydedilemedi' : 'Kaydedildi'} />
         <span className="spacer" />
+        {zoom > 1 && <button onClick={() => applyZoom(1)} title="Sayfaya sığdır">🔍 %{Math.round(zoom * 100)} ✕</button>}
         <button onClick={doUndo} title="Geri al">↶</button>
         <button onClick={doRedo} title="Yinele">↷</button>
         <button onClick={() => pdfInput.current?.click()} disabled={busy}>
@@ -782,19 +842,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
                 </button>
               ))}
             </div>
-            <div className="sizebar">
-              <button aria-label="Yazıyı küçült" onClick={() => setTextSize((activeBox?.size ?? fontSize) - 2)}>A−</button>
-              <input
-                type="range"
-                min={10}
-                max={80}
-                value={activeBox?.size ?? fontSize}
-                onChange={(e) => setTextSize(+e.target.value)}
-                aria-label="Yazı boyutu"
-              />
-              <button aria-label="Yazıyı büyüt" onClick={() => setTextSize((activeBox?.size ?? fontSize) + 2)}>A+</button>
-              <b>{activeBox?.size ?? fontSize}</b>
-            </div>
+
           </>
         ) : (
           <input type="range" min={1} max={12} step={0.5} value={width} onChange={(e) => setWidth(+e.target.value)} />
@@ -835,8 +883,15 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
         )}
       </div>
 
-      <div className="scroll" ref={wrap}>
-        <div className="paper" style={{ width: PAGE_W * scale, height: PAGE_H * scale }}>
+      <div
+        className="scroll"
+        ref={wrap}
+        onPointerDownCapture={pinchDown}
+        onPointerMoveCapture={pinchMove}
+        onPointerUpCapture={pinchUp}
+        onPointerCancelCapture={pinchUp}
+      >
+        <div className="paper" ref={paperRef} style={{ width: PAGE_W * scale, height: PAGE_H * scale }}>
           <div style={{ width: PAGE_W, height: PAGE_H, transform: `scale(${scale})`, transformOrigin: '0 0', position: 'relative' }}>
             <PageCanvas
               page={page}
@@ -907,6 +962,13 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
             </button>
           )}
           <button onClick={() => setSelection(EMPTY_SEL)}>Bırak</button>
+        </div>
+      )}
+      {(tool === 'text' || tool === 'pen' || tool === 'highlighter' || tool === 'eraser') && (
+        <div className="sidepanel" aria-label={tool === 'text' ? 'Yazı boyutu' : 'Kalem boyutu'}>
+          <button aria-label="Büyüt" onClick={() => (tool === 'text' ? setTextSize((activeBox?.size ?? fontSize) + 2) : setWidth(Math.min(12, width + 1)))}>+</button>
+          <b>{tool === 'text' ? (activeBox?.size ?? fontSize) : width}</b>
+          <button aria-label="Küçült" onClick={() => (tool === 'text' ? setTextSize((activeBox?.size ?? fontSize) - 2) : setWidth(Math.max(1, width - 1)))}>−</button>
         </div>
       )}
       <footer className="bar pager">
