@@ -41,6 +41,13 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
   const [ocrMsg, setOcrMsg] = useState('')
   const [ocrBusy, setOcrBusy] = useState(false)
   const [indexOn, setIndexOn] = useState(indexEnabled())
+  const [savePref, setSavePref] = useState(() => {
+    try {
+      return localStorage.getItem('technote:recSavePref') ?? 'ask'
+    } catch {
+      return 'ask'
+    }
+  })
   const [srv, setSrv] = useState<OcrStatus | null>(null)
   useEffect(() => {
     if (profile.is_admin) void ocrStatus().then(setSrv)
@@ -99,6 +106,27 @@ export default function Account({ profile, onBack, onNameChanged }: { profile: P
             <button className="on">Şifreyi değiştir</button>
           </form>
           {pwMsg && <p className={pwMsg.endsWith('.') && !pwMsg.includes('değil') ? 'muted' : 'err'}>{pwMsg}</p>}
+        </section>
+
+        <section>
+          <h2>Ses kaydı</h2>
+          <p className="muted">Kayıt bitince iCloud Drive'a kaydetme ekranı açılsın mı?</p>
+          <select
+            value={savePref}
+            onChange={(e) => {
+              setSavePref(e.target.value)
+              try {
+                if (e.target.value === 'ask') localStorage.removeItem('technote:recSavePref')
+                else localStorage.setItem('technote:recSavePref', e.target.value)
+              } catch {
+                /* yok say */
+              }
+            }}
+          >
+            <option value="ask">Her kayıtta sor</option>
+            <option value="icloud">Evet, kayıt bitince iCloud ekranını aç</option>
+            <option value="device">Hayır, sadece bu cihazda kalsın</option>
+          </select>
         </section>
 
         <section>

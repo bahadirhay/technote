@@ -9,6 +9,7 @@ import { deleteAudio, loadAudio, loadImage, saveAudio, saveImage, savePdf } from
 import CameraSheet from './CameraSheet'
 import RecorderBar, { type RecUi } from './RecorderBar'
 import Recordings, { type Jump } from './Recordings'
+import { RecordConsent, SaveSheet, type SaveChoice } from './RecordDialogs'
 import { AudioRecorder, exportAudio, fmtClock, fmtDate } from './media'
 import {
   BG_LINES,
@@ -334,7 +335,9 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   const [recState, setRecState] = useState<RecUi>('idle')
   const [recMs, setRecMs] = useState(0)
   const [recErr, setRecErr] = useState('')
-  const recRef = useRef<{ id: string; startedAt: number; rec: AudioRecorder } | null>(null)
+  const recRef = useRef<{ id: string; startedAt: number; rec: AudioRecorder; choice: SaveChoice } | null>(null)
+  const [consentOpen, setConsentOpen] = useState(false)
+  const [saveSheet, setSaveSheet] = useState<{ id: string; name: string; blob: Blob } | null>(null)
   const recStateRef = useRef<RecUi>('idle')
   const setRec = (st: RecUi) => {
     recStateRef.current = st
@@ -342,30 +345,37 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
   }
   const MAX_REC_MS = 2 * 3600 * 1000
 
-  const startRecording = async () => {
+  // Başlat: seçim hatırlanmışsa doğrudan, yoksa önce onay penceresi
+  const requestStart = () => {
     setRecErr('')
-    // İlk kayıtta bilgilendirme ve onay (ses sadece cihazda kalır)
+    let pref: string | null = null
     try {
-      if (!localStorage.getItem('technote:recConsent')) {
-        const ok = confirm(
-          'Ses kaydı hakkında:\n\n' +
-            '• Kayıt SADECE bu cihazda saklanır, sunucuya yüklenmez.\n' +
-            '• İstersen kaydı iCloud Drive / Google Drive gibi kendi bulutuna kaydedebilirsin.\n' +
-            '• Safari verisini silersen veya uygulamayı kaldırırsan kayıt kaybolur.\n' +
-            '• Başkalarının sesini kaydederken (öğretmen, arkadaşların) izin almayı unutma.\n\nKayda başlayalım mı?',
-        )
-        if (!ok) return
-        localStorage.setItem('technote:recConsent', '1')
-      }
+      pref = localStorage.getItem('technote:recSavePref')
     } catch {
-      /* depolama yoksa her seferinde sormayız */
+      /* hatırlanamaz, her seferinde sorulur */
     }
+    if (pref === 'icloud' || pref === 'device') return void startRecording(pref)
+    setConsentOpen(true)
+  }
+  const chooseConsent = (choice: SaveChoice, remember: boolean) => {
+    setConsentOpen(false)
+    if (remember) {
+      try {
+        localStorage.setItem('technote:recSavePref', choice)
+      } catch {
+        /* yok say */
+      }
+    }
+    void startRecording(choice)
+  }
+  const startRecording = async (choice: SaveChoice) => {
+    setRecErr('')
     if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       return setRecErr('Bu tarayıcı ses kaydını desteklemiyor.')
     }
     try {
       const rec = await AudioRecorder.create()
-      recRef.current = { id: uid(), startedAt: Date.now(), rec }
+      recRef.current = { id: uid(), startedAt: Date.now(), rec, choice }
       setRecMs(0)
       setRec('recording')
     } catch (e) {
@@ -416,6 +426,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
     setRec('idle')
     setRecOpen(false)
     setPanelOpen(true)
+    if (cur.choice === 'icloud') setSaveSheet({ id: meta.id, name: meta.name, blob })
   }
   // Süre sayacı + en uzun kayıt sınırı
   useEffect(() => {
@@ -463,15 +474,27 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
     onChange({ ...base, recordings: (base.recordings ?? []).filter((x) => x.id !== id) })
     void deleteAudio(id)
   }
-  const exportRec = async (id: string) => {
+  const markSaved = (id: string) => {
+    const base = nbRef.current
+    onChange({ ...base, recordings: (base.recordings ?? []).map((x) => (x.id === id ? { ...x, savedAt: Date.now() } : x)) })
+  }
+  // Paylaşım ekranı SADECE dokunuşun içinde açılabilir (Safari): ses hazırsa hiç beklemeden çağrılır
+  const exportRec = (id: string, blob?: Blob) => {
     const r = nbRef.current.recordings?.find((x) => x.id === id)
     if (!r) return
-    const blob = await loadAudio(id, r.where !== 'device')
-    if (!blob) return alert('Ses dosyası bu cihazda bulunamadı.')
-    if (await exportAudio(blob, r.name)) {
-      const base = nbRef.current
-      onChange({ ...base, recordings: (base.recordings ?? []).map((x) => (x.id === id ? { ...x, savedAt: Date.now() } : x)) })
-    }
+    const go = (b: Blob) => void exportAudio(b, r.name).then((ok) => ok && markSaved(id))
+    if (blob) return go(blob)
+    void loadAudio(id, r.where !== 'device').then((b) => (b ? go(b) : alert('Ses dosyası bu cihazda bulunamadı.')))
+  }
+  const saveSheetNow = () => {
+    const sh = saveSheet
+    if (!sh) return
+    void exportAudio(sh.blob, sh.name).then((ok) => {
+      if (ok) {
+        markSaved(sh.id)
+        setSaveSheet(null)
+      }
+    })
   }
   // Başka cihazda kaydedilmiş bir kaydın sesini, kaydettiğin dosyadan bu cihaza geri ekler
   const attachRec = async (id: string, file: File) => {
@@ -632,7 +655,7 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
           state={recState}
           ms={recMs}
           error={recErr}
-          onStart={() => void startRecording()}
+          onStart={requestStart}
           onPause={pauseRecording}
           onResume={resumeRecording}
           onStop={() => void stopRecording()}
@@ -832,10 +855,12 @@ export default function Editor({ nb, onChange, onBack, sync, startPage, onPageMe
           onClose={() => setPanelOpen(false)}
           onDelete={deleteRec}
           onRename={renameRec}
-          onExport={(id) => void exportRec(id)}
+          onExport={exportRec}
           onAttach={(id, f) => void attachRec(id, f)}
         />
       )}
+      {consentOpen && <RecordConsent onChoose={chooseConsent} onCancel={() => setConsentOpen(false)} />}
+      {saveSheet && <SaveSheet name={saveSheet.name} onSave={saveSheetNow} onLater={() => setSaveSheet(null)} />}
       {camOpen && <CameraSheet onCapture={(b) => void addImage(b)} onClose={() => setCamOpen(false)} />}
     </div>
   )

@@ -15,7 +15,7 @@ interface Props {
   onClose: () => void
   onDelete: (id: string) => void
   onRename: (id: string) => void
-  onExport: (id: string) => void
+  onExport: (id: string, blob?: Blob) => void
   onAttach: (id: string, file: File) => void
 }
 
@@ -31,6 +31,14 @@ export default function Recordings({ recordings, jump, onClose, onDelete, onRena
   const [err, setErr] = useState('')
   const pending = useRef<{ ms: number; play: boolean } | null>(null)
   const attachInput = useRef<HTMLInputElement>(null)
+  // Paylaşım ekranı için sesler önceden belleğe alınır (dokunuşta beklemek paylaşımı bozar)
+  const warmed = useRef(new Map<string, Blob>())
+  useEffect(() => {
+    for (const r of recordings.slice(-6)) {
+      if (r.where !== 'device' || warmed.current.has(r.id)) continue
+      void loadAudio(r.id).then((b) => b && warmed.current.set(r.id, b))
+    }
+  }, [recordings])
   const attachFor = useRef<string | null>(null)
   // Bu cihazda sesi olmayan kayıtlar (başka cihazda kaydedilmiş)
   const [missing, setMissing] = useState<Set<string>>(new Set())
@@ -164,8 +172,8 @@ export default function Recordings({ recordings, jump, onClose, onDelete, onRena
       />
       {!mini && (
         <p className="rp-info">
-          Ses kayıtları <b>sadece cihazında</b> saklanır, sunucuya yüklenmez. <b>☁ Kaydet</b> ile iCloud Drive, Google Drive
-          gibi <b>kendi bulutuna</b> kaydedebilirsin. Safari verisini silersen veya uygulamayı kaldırırsan cihazdaki ses
+          Ses kayıtları <b>sadece cihazında</b> saklanır, sunucuya yüklenmez. <b>☁ Kaydet</b> ile iCloud Drive (veya Google Drive
+          gibi) <b>kendi bulutuna</b> kaydedersin; bunu iOS senin yerine kendiliğinden yapamaz. Safari verisini silersen veya uygulamayı kaldırırsan cihazdaki ses
           kaybolur.
         </p>
       )}
@@ -182,7 +190,7 @@ export default function Recordings({ recordings, jump, onClose, onDelete, onRena
                     ? missing.has(r.id)
                       ? '⚠ Ses bu cihazda yok (başka cihazda kaydedildi)'
                       : r.savedAt
-                        ? '📱 Bu cihazda · ✓ Kendi bulutuna kaydettin'
+                        ? '📱 Bu cihazda · ✓ iCloud/Dosyalar\'a kaydettin'
                         : '📱 Sadece bu cihazda'
                     : '☁ Eski sürümden: sunucuda'}
                 </span>
@@ -199,7 +207,7 @@ export default function Recordings({ recordings, jump, onClose, onDelete, onRena
               ) : (
                 <>
                   <button onClick={() => void select(r.id, 0, true)}>▶ Dinle</button>
-                  <button onClick={() => onExport(r.id)} title="Dosyalar'a / kendi bulutuna kaydet">☁ Kaydet</button>
+                  <button onClick={() => onExport(r.id, warmed.current.get(r.id))} title="iCloud Drive / Dosyalar'a kaydet">☁ Kaydet</button>
                 </>
               )}
               <button onClick={() => onRename(r.id)} aria-label="Adı değiştir">✎</button>

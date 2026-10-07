@@ -71,6 +71,12 @@ Kalemle şekil çiz, parmağını kaldırmadan yarım saniye bekle: daire, dikd�
 - **Ses sunucuya yüklenmez.** Kayıt sadece cihazda (IndexedDB) saklanır. Kullanıcı "☁ Kaydet" ile paylaşım sayfasından
   kendi bulutuna (iCloud Drive, Google Drive, Dropbox...) .m4a olarak kaydeder. Başka cihazda ses yoksa "📂 Dosyadan ekle"
   ile o dosya geri eklenir. İlk kayıtta bilgilendirme/onay gösterilir. En uzun kayıt 2 saat (~20 MB/saat).
+  Kayıttan önce onay penceresi: "bitince iCloud'a kaydetme ekranı açılsın mı?" (Evet / Hayır sadece cihazda / Vazgeç,
+  isteğe bağlı "hatırla"; Hesabım'dan değiştirilir). Evet ise kayıt bitince "Kayıt hazır" penceresi çıkar ve tek dokunuşla
+  iOS paylaşım ekranı (Dosyalara Kaydet → iCloud Drive) açılır. Web uygulaması iCloud Drive'a kendiliğinden yazamaz
+  (Safari'de `showSaveFilePicker` yok, dosya sağlayıcı olunamaz); `navigator.share` ancak dokunuşun içinde çağrılabilir, bu
+  yüzden ses önceden belleğe alınır ve düğme beklemeden paylaşır.
+  Gerçek otomatik iCloud için yerel uygulama veya CloudKit JS (Apple Developer hesabı + kullanıcının Apple ID ile girişi) gerekir.
   Not: Önceki sürümde kaydedilmiş ve sunucuya yüklenmiş kayıtlar "☁ Eski sürümden" rozetiyle görünür; silince sunucudan da silinir.
 - Bilinen sınır: web uygulamasında ekran kilitlenirse veya başka uygulamaya geçilirse kayıt durabilir
   (ekran kapanmasın diye Wake Lock istenir). Yedek dosyasına ses dahil değildir (ses için ☁ Kaydet kullanılır).
